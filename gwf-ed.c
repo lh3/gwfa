@@ -20,6 +20,7 @@ void gwf_ed_index_arc_core(uint64_t *idx, uint32_t n_vtx, uint32_t n_arc, uint64
 			uint32_t v = arc[st]>>32;
 			assert(v < n_vtx);
 			idx[v] = (uint64_t)st << 32 | (i - st);
+			st = i;
 		}
 	}
 }
