@@ -26,71 +26,56 @@ Perhaps we can manually allocate $H_{vsd}$ from a large memory block.
 \begin{algorithm}[!hb]
 \DontPrintSemicolon
 \footnotesize
-\KwIn{Target sequence graph $G=(V,E)$, query sequence $P$ and scoring: $b$ for
-mismatch, $q$ for linear gap; $v_0\in V$ and $v_1$ are the start and end
-vertices, respectively.}
+\KwIn{Target sequence graph $G=(V,E)$ and query sequence $P$;
+$v_0\in V$ and $v_1$ are the start and end vertices, respectively.}
 \KwOut{Best alignment score}
 \BlankLine
-\textbf{function} {\sc GwfAlign}$(G,P,b,q,r)$
+\textbf{function} {\sc GwfEditDist}$(G,P)$
 \Begin {
-	${\rm push}(D, (v_0,0))$\Comment*[r]{$D$ keeps extensible diagonals}
+	${\rm push}(D, (v_0,-1,0))$\Comment*[r]{$D$ keeps $s$-wave}
 	$s\gets0$\;
 	\While{{\bf true}} {
-		$D\gets${\sc GwfExtend}$(H,s,D)$\;
-		\If (\Comment*[f]{Finished global alignment}) {$H_{v_1,s,|P|-|v_1|}=|v_1|$} {
+		$D\gets${\sc GwfExtend}$(G,P,s,D)$\;
+		\If {$(v_1,|v_1|-1,|q|-|v_1|)$ {\bf in} $D$} {
 			{\bf return} $s$\;
 		}
 		$s\gets s+1$\;
-		{\sc GwfNext}$(H,s,D,b,q)$\;
 	}
 }
-\textbf{function} {\sc GwfExtend}$(H,s,D)$
+\textbf{function} {\sc GwfExtend}$(G,P,s,A)$
 \Begin {
-	$A\gets D$\Comment*[r]{$A$ is the DFS stack}
 	$B\gets[]$\Comment*[r]{$B$ will be the new $D$ for the next cycle}
 	\While {$|A|\not=0$} {
-		$(v,d)\gets{\rm pop}(A)$\;
-		$k\gets H_{vsd}$\;
+		$(v,k,d)\gets{\rm pop}(A)$\;
 		$i\gets k+d$\;
-		\uIf (\Comment*[f]{Linear extension}) {$k<|v|$ {\bf and} $i<|P|$} {
-			\While {$i<|P|$ {\bf and} $k<|v|$ {\bf and} $P[i]=v[k]$} {
+		\uIf (\Comment*[f]{Linear extension}) {$k+1<|v|$ {\bf and} $i+1<|P|$} {
+			\While {$i+1<|P|$ {\bf and} $k+1<|v|$ {\bf and} $P[i+1]=v[k+1]$} {
 				$i\gets i+1$\;
 				$k\gets k+1$\;
 			}
-			$H_{vsd}\gets k$\;
-			\uIf {$k=|v|$} {
-				${\rm push}(A,(v,d))$\;
+			\uIf {$k+1=|v|$} {
+				${\rm push}(A,(v,k,d))$\;
 			} \Else {
 				${\rm push}(B,(v,k+1,d-1))$; ${\rm push}(B,(v,k+1,d))$; ${\rm push}(B,(v,k,d+1))$\;
 			}
-		} \ElseIf (\Comment*[f]{Graph extension}) {$k=|v|$ {\bf and} $i<|P|$} {
+		} \ElseIf (\Comment*[f]{Graph extension}) {$i+1<|P|$} {
 			\For (\Comment*[f]{Traverse $v$'s neighbors}) {$(v,w)$ {\bf in} $E$} {
-				\uIf {$P[i+1]=w[0]$} {
-					${\rm push}(A, (w,i+1))$\;
-				} \Else {
-					${\rm push}(B, (w,0,i))$; ${\rm push}(B, (w,0,i+1))$; ${\rm push}(B, (w,0,i+2))$\;
+				\If {$(w,i+1)$ not visited} {
+					\uIf {$P[i+1]=w[0]$} {
+						${\rm push}(A, (w,0,i+1))$\;
+					} \Else {
+						${\rm push}(B, (w,0,i))$\;
+						${\rm push}(B, (w,0,i+1))$\;
+						${\rm push}(B, (w,0,i+2))$\;
+					}
 				}
 			}
 		}
 	}
-	Remove duplicated entries in $B$\Comment*[r]{Could be done by sorting}
+	Remove duplicated entries in $B$\Comment*[r]{Could be done by sorting}\;
 	{\bf return} $B$\;
 }
-\textbf{function} {\sc GwfNext}$(H,s,D,b,q)$
-\Begin {
-	\For {$(v,k,d)$ {\bf in} $D$} {
-		\uIf {$k>0$} {
-			$H_{vsd}\gets\max\{H_{v,s-b,d}+1,H_{v,s-q,d-1},H_{v,s-q,d+1}+1\}$\;
-		} \Else {
-			$i\gets d$\;
-			$H_{vsd}\gets H_{v,s-q,d-1}$\Comment*[r]{Insertion to the graph}
-			\For {$(u,v)$ {\bf in} $E$} {
-				$H_{vsd}\gets\max\{H_{vsd},H_{u,s-b,i-|u|-1},H_{u,s-q,i-|u|}+1\}$\;
-			}
-		}
-	}
-}
-\caption{Global graph wavefront alignment (GWFA)}\label{algo:1}
+\caption{Compute the edit distnace between a graph and a sequence with GWFA}\label{algo:1}
 \end{algorithm}
 
 \end{document}
