@@ -102,33 +102,38 @@ gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char
 		int32_t d = (int64_t)((uint32_t)t.vd) - 80000000LL; // diagonal
 		int32_t k = (int32_t)t.k; // wave front position
 		int32_t i = k + d; // query position
+		while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1])
+			++i, ++k;
 		if (k + 1 < g->len[v] && i + 1 < ql) {
-			while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1])
-				++i, ++k;
-			if (k + 1 == g->len[v]) {
-				gwf_ed_push(A, v, d, k);
-			} else {
-				gwf_ed_push(B, v, d-1, k+1);
-				gwf_ed_push(B, v, d,   k+1);
-				gwf_ed_push(B, v, d+1, k);
-			}
-		} else if (i + 1 < ql) { // k + 1 == g->len[v]
-			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j;
+			gwf_ed_push(B, v, d-1, k+1);
+			gwf_ed_push(B, v, d,   k+1);
 			gwf_ed_push(B, v, d+1, k);
+		} else if (i + 1 < ql) { // k + 1 == g->len[v]
+			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j, n_ext = 0;
 			for (j = 0; j < nv; ++j) {
 				uint32_t w = (uint32_t)g->arc[ov + j];
+				int absent;
 				khint_t itr;
-				itr = gwf_set64_get(h, (uint64_t)w<<32 | (i + 1));
-				if (itr != kh_end(h)) { // visited before from other vertices
-					continue;
-				} else if (q[i + 1] == g->seq[w][0]) {
-					gwf_ed_push(A, v, i+1, 0);
-				} else {
-					gwf_ed_push(B, v, i,   0);
-					gwf_ed_push(B, v, i+1, 0);
+				itr = gwf_set64_put(h, (uint64_t)w<<32 | (i + 1), &absent);
+				if (q[i + 1] == g->seq[w][0]) {
+					++n_ext;
+					if (absent) gwf_ed_push(A, w, i+1, 0);
+				} else if (absent) {
+					gwf_ed_push(B, w, i,   0);
+					gwf_ed_push(B, w, i+1, 0);
 				}
 			}
-		} else if (v == v1) { // i + 1 == ql && k + 1 == g->len[v]
+			if (nv == 0 || n_ext != nv)
+				gwf_ed_push(B, v, d+1, k);
+		} else if (k + 1 < g->len[v]) { // i + 1 == ql
+			gwf_ed_push(B, v, d-1, k+1);
+		} else if (v != v1) { // i + 1 == ql && k + 1 == g->len[v]
+			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j;
+			for (j = 0; j < nv; ++j) {
+				uint32_t w = (uint32_t)g->arc[ov + j];
+				gwf_ed_push(B, w, i, 0);
+			}
+		} else {
 			*is_end = 1;
 			break;
 		}
@@ -157,7 +162,7 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 	gwf_set64_t *h;
 	h = gwf_set64_init();
 	KCALLOC(km, a, 1);
-	a[0].vd = (uint64_t)v0<<32 | 80000000LL, a[0].k = 0;
+	a[0].vd = (uint64_t)v0<<32 | 80000000LL, a[0].k = -1;
 	while (n_a > 0) {
 		a = gwf_ed_extend(km, g, ql, q, v1, &is_end, &n_a, a, h);
 		if (is_end || n_a == 0) break;
