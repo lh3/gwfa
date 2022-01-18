@@ -1,6 +1,6 @@
 CC=			gcc
 CFLAGS=		-g -Wall -O2
-CPPFLAGS=
+CPPFLAGS=	-DGWF_DEBUG
 INCLUDES=
 OBJS=		kalloc.o gwf-ed.o
 PROG=		gwf-test

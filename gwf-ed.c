@@ -89,7 +89,9 @@ static int32_t gwf_ed_dedup(void *km, int32_t n_a, gwf_diag_t *a)
 			st = i;
 		}
 	}
-	printf("%d -> %d\n", n_a, n);
+#ifdef GWF_DEBUG
+	printf("[%s] %d -> %d\n", __func__, n_a, n);
+#endif
 	return n;
 }
 
@@ -177,7 +179,9 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 			n_a = gwf_ed_dedup(km, n_a, a);
 		if (is_end || n_a == 0) break;
 		++s;
-		//printf("* %d %d\n", s, n_a);
+#ifdef GWF_DEBUG
+		printf("[%s] s=%d, n=%d\n", __func__, s, n_a);
+#endif
 	}
 	gwf_set64_destroy(h);
 	return is_end? s : -1;
