@@ -36,7 +36,7 @@ $v_0\in V$ and $v_1$ are the start and end vertices, respectively.}
 	$s\gets0$\;
 	\While{{\bf true}} {
 		$D\gets${\sc GwfExtend}$(G,P,s,D)$\;
-		\If {$(v_1,|v_1|-1,|q|-|v_1|)$ {\bf in} $D$} {
+		\If {$(v_1,|q|-|v_1|,|v_1|-1)$ {\bf in} $D$} {
 			{\bf return} $s$\;
 		}
 		$s\gets s+1$\;
@@ -48,17 +48,14 @@ $v_0\in V$ and $v_1$ are the start and end vertices, respectively.}
 	\While {$|A|\not=0$} {
 		$(v,k,d)\gets{\rm pop}(A)$\;
 		$i\gets k+d$\;
+		\While {$i+1<|P|$ {\bf and} $k+1<|v|$ {\bf and} $P[i+1]=v[k+1]$} {
+			$i\gets i+1$\;
+			$k\gets k+1$\;
+		}
 		\uIf (\Comment*[f]{Linear extension}) {$k+1<|v|$ {\bf and} $i+1<|P|$} {
-			\While {$i+1<|P|$ {\bf and} $k+1<|v|$ {\bf and} $P[i+1]=v[k+1]$} {
-				$i\gets i+1$\;
-				$k\gets k+1$\;
-			}
-			\uIf {$k+1=|v|$} {
-				${\rm push}(A,(v,k,d))$\;
-			} \Else {
-				${\rm push}(B,(v,k+1,d-1))$; ${\rm push}(B,(v,k+1,d))$; ${\rm push}(B,(v,k,d+1))$\;
-			}
-		} \ElseIf (\Comment*[f]{Graph extension}) {$i+1<|P|$} {
+			${\rm push}(B,(v,k+1,d-1))$; ${\rm push}(B,(v,k+1,d))$; ${\rm push}(B,(v,k,d+1))$\;
+		} \uElseIf (\Comment*[f]{Graph extension}) {$i+1<|P|$} {
+			${\rm push}(B,(v,k,d+1))$\;
 			\For (\Comment*[f]{Traverse $v$'s neighbors}) {$(v,w)$ {\bf in} $E$} {
 				\If {$(w,i+1)$ not visited} {
 					\uIf {$P[i+1]=w[0]$} {
@@ -66,13 +63,18 @@ $v_0\in V$ and $v_1$ are the start and end vertices, respectively.}
 					} \Else {
 						${\rm push}(B, (w,0,i))$\;
 						${\rm push}(B, (w,0,i+1))$\;
-						${\rm push}(B, (w,0,i+2))$\;
 					}
 				}
 			}
+		} \uElseIf {$k+1<|v|$} {
+			${\rm push}(B, (v,d+1,k))$\;
+		} \Else {
+			\For {$(v,w)$ {\bf in} $E$} {
+				${\rm push}(B, (w,0,i))$\;
+			}
 		}
 	}
-	Remove duplicated entries in $B$\Comment*[r]{Could be done by sorting}\;
+	Remove duplicated entries in $B$\Comment*[r]{Could be done by sorting}
 	{\bf return} $B$\;
 }
 \caption{Compute the edit distnace between a graph and a sequence with GWFA}\label{algo:1}
