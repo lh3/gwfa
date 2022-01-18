@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <string.h>
+#include <stdio.h>
 #include "gwfa.h"
 #include "kalloc.h"
 #include "ksort.h"
@@ -63,6 +64,16 @@ static inline void gwf_ed_push(kdq_t(gwf_diag_t) *a, uint32_t v, int32_t d, int3
 	*kdq_pushp(gwf_diag_t, a) = t;
 }
 
+static inline int32_t gwf_ed_update(gwf_diag_t *p, uint32_t v, int32_t d, int32_t k)
+{
+	uint64_t vd = (uint64_t)v<<32 | (80000000LL + d);
+	if (p->vd == vd) {
+		p->k = p->k > k? p->k : k;
+		return 0;
+	}
+	return 1;
+}
+
 // for each diagonal, remove elements that are on on the wave front
 static int32_t gwf_ed_dedup(void *km, int32_t n_a, gwf_diag_t *a)
 {
@@ -78,6 +89,7 @@ static int32_t gwf_ed_dedup(void *km, int32_t n_a, gwf_diag_t *a)
 			st = i;
 		}
 	}
+	printf("%d -> %d\n", n_a, n);
 	return n;
 }
 
@@ -106,8 +118,11 @@ gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char
 		while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1])
 			++i, ++k;
 		if (k + 1 < g->len[v] && i + 1 < ql) {
-			gwf_ed_push(B, v, d-1, k+1);
-			gwf_ed_push(B, v, d,   k+1);
+			int32_t push1 = 1, push2 = 1;
+			if (B->count >= 2) push1 = gwf_ed_update(&B->a[B->count - 2], v, d-1, k+1);
+			if (B->count >= 1) push2 = gwf_ed_update(&B->a[B->count - 1], v, d,   k+1);
+			if (push1) gwf_ed_push(B, v, d-1, k+1);
+			if (push2) gwf_ed_push(B, v, d,   k+1);
 			gwf_ed_push(B, v, d+1, k);
 		} else if (i + 1 < ql) { // k + 1 == g->len[v]
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j, n_ext = 0;
@@ -135,25 +150,17 @@ gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char
 				gwf_ed_push(B, w, i, 0);
 			}
 		} else {
-			*is_end = 1;
-			break;
+			*is_end = 1, *n_a_ = 0;
+			kdq_destroy(gwf_diag_t, A);
+			kdq_destroy(gwf_diag_t, B);
+			return 0;
 		}
 	}
 
 	kdq_destroy(gwf_diag_t, A);
-	n = kdq_size(B), b = B->a, B->a = 0;
+	*n_a_ = kdq_size(B), b = B->a, B->a = 0;
 	kdq_destroy(gwf_diag_t, B);
-
-	if (*is_end) {
-		kfree(km, b);
-		*n_a_ = 0;
-		return 0;
-	} else {
-		n = gwf_ed_dedup(km, n, b); // this works only because $B is a stack
-		KREALLOC(km, b, n);
-		*n_a_ = n;
-		return b;
-	}
+	return b;
 }
 
 int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v0, int32_t v1)
@@ -166,8 +173,11 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 	a[0].vd = (uint64_t)v0<<32 | 80000000LL, a[0].k = -1;
 	while (n_a > 0) {
 		a = gwf_ed_extend(km, g, ql, q, v1, &is_end, &n_a, a, h);
+		if (g->n_vtx > 1 && ((s+1) & 0x7f) == 0) // only need to dedup for graphs
+			n_a = gwf_ed_dedup(km, n_a, a);
 		if (is_end || n_a == 0) break;
 		++s;
+		//printf("* %d %d\n", s, n_a);
 	}
 	gwf_set64_destroy(h);
 	return is_end? s : -1;
