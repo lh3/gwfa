@@ -99,13 +99,13 @@ static int32_t gwf_ed_dedup(void *km, int32_t n_a, gwf_diag_t *a)
 }
 
 // extend to the wavefront and return the initial wave for the next round
-gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v1, int32_t *is_end, int32_t *n_a_, gwf_diag_t *a, gwf_set64_t *h)
+gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v1, int32_t *end_v, int32_t *end_off, int32_t *n_a_, gwf_diag_t *a, gwf_set64_t *h)
 {
 	int32_t i, x, n = *n_a_;
 	kdq_t(gwf_diag_t) *A, *B;
 	gwf_diag_t *b;
 
-	*is_end = 0;
+	*end_v = -1, *end_off = -1;
 	for (i = 0, x = 1; i < 32; ++i, x <<= 1)
 		if (x >= n) break;
 	if (i < 4) i = 4;
@@ -147,6 +147,11 @@ gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char
 			}
 			if (nv == 0 || n_ext != nv) // add an insertion to the target; this *might* cause a duplicate in corner cases
 				gwf_ed_push(B, v, d+1, k);
+		} else if (v1 < 0 || (v == v1 && k + 1 == g->len[v])) { // i + 1 == ql
+			*end_v = v, *end_off = k, *n_a_ = 0;
+			kdq_destroy(gwf_diag_t, A);
+			kdq_destroy(gwf_diag_t, B);
+			return 0;
 		} else if (k + 1 < g->len[v]) { // i + 1 == ql; reaching the end of the query but not the end of the vertex
 			gwf_ed_push(B, v, d-1, k+1); // add an deletion; this *might* case a duplicate in corner cases
 		} else if (v != v1) { // i + 1 == ql && k + 1 == g->len[v]; not reaching the last vertex $v1
@@ -155,11 +160,8 @@ gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char
 				uint32_t w = (uint32_t)g->arc[ov + j];
 				gwf_ed_push(B, w, i, 0); // deleting the first base on the next vertex
 			}
-		} else { // reaching the ends of the query and the end of the last vertex
-			*is_end = 1, *n_a_ = 0;
-			kdq_destroy(gwf_diag_t, A);
-			kdq_destroy(gwf_diag_t, B);
-			return 0;
+		} else {
+			assert(0); // should never come here
 		}
 	}
 
@@ -171,22 +173,22 @@ gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char
 
 int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v0, int32_t v1)
 {
-	int32_t s = 0, n_a = 1, is_end;
+	int32_t s = 0, n_a = 1, end_v, end_off;
 	gwf_diag_t *a;
 	gwf_set64_t *h;
 	h = gwf_set64_init();
 	KCALLOC(km, a, 1);
 	a[0].vd = (uint64_t)v0<<32 | 80000000LL, a[0].k = -1; // the initial state
 	while (n_a > 0) {
-		a = gwf_ed_extend(km, g, ql, q, v1, &is_end, &n_a, a, h);
+		a = gwf_ed_extend(km, g, ql, q, v1, &end_v, &end_off, &n_a, a, h);
 		if (((s+1) & 0x7f) == 0) // dedup every 64 cycles (dedup is slow due to sorting and rarely needed for linear sequences)
 			n_a = gwf_ed_dedup(km, n_a, a);
-		if (is_end || n_a == 0) break;
+		if (end_off >= 0 || n_a == 0) break;
 		++s;
 #ifdef GWF_DEBUG
 		printf("[%s] s=%d, n=%d\n", __func__, s, n_a);
 #endif
 	}
 	gwf_set64_destroy(h);
-	return is_end? s : -1;
+	return end_v >= 0? s : -1; // end_v < 0 could happen if v0 can't reach v1
 }
