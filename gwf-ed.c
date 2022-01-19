@@ -181,7 +181,7 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 	a[0].vd = (uint64_t)v0<<32 | 80000000LL, a[0].k = -1; // the initial state
 	while (n_a > 0) {
 		a = gwf_ed_extend(km, g, ql, q, v1, &end_v, &end_off, &n_a, a, h);
-		if (((s+1) & 0x7f) == 0) // dedup every 64 cycles (dedup is slow due to sorting and rarely needed for linear sequences)
+//		if (((s+1) & 0x7f) == 0) // dedup every 64 cycles (dedup is slow due to sorting and rarely needed for linear sequences)
 			n_a = gwf_ed_dedup(km, n_a, a);
 		if (end_off >= 0 || n_a == 0) break;
 		++s;
