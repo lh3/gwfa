@@ -51,7 +51,7 @@ KHASHL_INIT(KH_LOCAL, gwf_set64_t, gwf_set64, uint64_t, kh_hash_dummy, kh_eq_gen
 
 typedef struct { // a diagonal
 	uint64_t vd; // NB: this wastes 4 bytes due to memory alignment
-	int32_t k;
+	int32_t k, dummy;
 } gwf_diag_t;
 
 #define ed_key(x) ((x).vd)
@@ -63,7 +63,7 @@ KDQ_INIT(gwf_diag_t)
 static inline void gwf_ed_push(kdq_t(gwf_diag_t) *a, uint32_t v, int32_t d, int32_t k)
 {
 	gwf_diag_t t;
-	t.vd = (uint64_t)v<<32 | (80000000LL + d), t.k = k;
+	t.vd = (uint64_t)v<<32 | (80000000LL + d), t.k = k, t.dummy = 0;
 	*kdq_pushp(gwf_diag_t, a) = t;
 }
 
@@ -82,7 +82,7 @@ static inline int32_t gwf_ed_update(gwf_diag_t *p, uint32_t v, int32_t d, int32_
 static int32_t gwf_ed_dedup(void *km, int32_t n_a, gwf_diag_t *a)
 {
 	int32_t i, n, st;
-//	if (n_a == 308) for (i = 0; i < n_a; ++i) printf("X\t%lld\t%lld\t%d\n", a[i].vd>>32, (int64_t)((uint32_t)a[i].vd) - 80000000LL, a[i].k);
+	if (n_a == 1705) for (i = 0; i < n_a; ++i) printf("X\t%lld\t%lld\t%d\t%d\n", a[i].vd>>32, (int64_t)((uint32_t)a[i].vd) - 80000000LL, a[i].k, a[i].dummy);
 	radix_sort_gwf_ed(a, a + n_a);
 	for (i = 1, st = 0, n = 0; i <= n_a; ++i) {
 		if (i == n_a || a[i].vd != a[st].vd) {
@@ -122,6 +122,10 @@ gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char
 		int32_t d = (int64_t)((uint32_t)t.vd) - 80000000LL; // diagonal
 		int32_t k = (int32_t)t.k; // wave front position
 		int32_t i = k + d; // query position
+		if (t.dummy) {
+			*kdq_pushp(gwf_diag_t, B) = t;
+			continue;
+		}
 		while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1]) // extend the diagonal $d to the wavefront
 			++i, ++k;
 		if (k + 1 < g->len[v] && i + 1 < ql) { // the most common case: the wavefront is in the middle
@@ -133,6 +137,8 @@ gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char
 			gwf_ed_push(B, v, d+1, k);
 		} else if (i + 1 < ql) { // k + 1 == g->len[v]; reaching the end of the vertex but not the end of query
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j, n_ext = 0;
+			gwf_ed_push(B, v, d, k);
+			B->a[B->count - 1].dummy = 1;
 			for (j = 0; j < nv; ++j) { // traverse $v's neighbors
 				uint32_t w = (uint32_t)g->arc[ov + j]; // $w is next to $v
 				int absent;

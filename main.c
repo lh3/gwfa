@@ -7,6 +7,7 @@
 #include "gfa-priv.h"
 #include "gwfa.h"
 #include "ketopt.h"
+#include "kalloc.h"
 #include "kseq.h"
 KSEQ_INIT(gzFile, gzread)
 
@@ -73,6 +74,8 @@ int main_ed_graph(int argc, char *argv[])
 		return 1;
 	}
 
+	km = km_init();
+
 	gfa = gfa_read(argv[o.ind]);
 	assert(gfa);
 	g = gwf_gfa2gwf(gfa, v0);
@@ -88,8 +91,12 @@ int main_ed_graph(int argc, char *argv[])
 		s = gwf_ed(km, g, ks->seq.l, ks->seq.s, 0, -1);
 		printf("%s\t%d\n", ks->name.s, s);
 	}
+	kseq_destroy(ks);
+	gzclose(fp);
+
 	gwf_cleanup(km, g);
 	gwf_free(g);
+	km_destroy(km);
 	return 0;
 }
 
