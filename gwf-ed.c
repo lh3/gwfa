@@ -82,6 +82,7 @@ static inline int32_t gwf_ed_update(gwf_diag_t *p, uint32_t v, int32_t d, int32_
 static int32_t gwf_ed_dedup(void *km, int32_t n_a, gwf_diag_t *a)
 {
 	int32_t i, n, st;
+//	if (n_a == 308) for (i = 0; i < n_a; ++i) printf("X\t%lld\t%lld\t%d\n", a[i].vd>>32, (int64_t)((uint32_t)a[i].vd) - 80000000LL, a[i].k);
 	radix_sort_gwf_ed(a, a + n_a);
 	for (i = 1, st = 0, n = 0; i <= n_a; ++i) {
 		if (i == n_a || a[i].vd != a[st].vd) {
@@ -128,7 +129,7 @@ gwf_diag_t *gwf_ed_extend(void *km, const gwf_graph_t *g, int32_t ql, const char
 			if (B->count >= 2) push1 = gwf_ed_update(&B->a[B->count - 2], v, d-1, k+1);
 			if (B->count >= 1) push2 = gwf_ed_update(&B->a[B->count - 1], v, d,   k+1);
 			if (push1) gwf_ed_push(B, v, d-1, k+1);
-			if (push2) gwf_ed_push(B, v, d,   k+1);
+			if (push2 || push1) gwf_ed_push(B, v, d, k+1);
 			gwf_ed_push(B, v, d+1, k);
 		} else if (i + 1 < ql) { // k + 1 == g->len[v]; reaching the end of the vertex but not the end of query
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j, n_ext = 0;
@@ -181,7 +182,7 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 	a[0].vd = (uint64_t)v0<<32 | 80000000LL, a[0].k = -1; // the initial state
 	while (n_a > 0) {
 		a = gwf_ed_extend(km, g, ql, q, v1, &end_v, &end_off, &n_a, a, h);
-//		if (((s+1) & 0x7f) == 0) // dedup every 64 cycles (dedup is slow due to sorting and rarely needed for linear sequences)
+		if (g->n_vtx > 1)
 			n_a = gwf_ed_dedup(km, n_a, a);
 		if (end_off >= 0 || n_a == 0) break;
 		++s;
