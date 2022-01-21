@@ -78,17 +78,27 @@ static inline int32_t gwf_ed_update(gwf_diag_t *p, uint32_t v, int32_t d, int32_
 	return 1;
 }
 
+static int gwf_ed_is_sorted(int32_t n_a, const gwf_diag_t *a)
+{
+	int32_t i;
+	for (i = 1; i < n_a; ++i)
+		if (a[i-1].vd > a[i].vd) break;
+	return (i == n_a);
+}
+
 // for each diagonal, remove elements that are on on the same wavefront
 static int32_t gwf_ed_dedup(void *km, int32_t n_a, gwf_diag_t *a)
 {
 	int32_t i, n, st;
-	if (n_a == 1705) for (i = 0; i < n_a; ++i) printf("X\t%lld\t%lld\t%d\t%d\n", a[i].vd>>32, (int64_t)((uint32_t)a[i].vd) - 80000000LL, a[i].k, a[i].dummy);
-	radix_sort_gwf_ed(a, a + n_a);
+	//if (n_a == 1705) for (i = 0; i < n_a; ++i) printf("X\t%lld\t%lld\t%d\t%d\n", a[i].vd>>32, (int64_t)((uint32_t)a[i].vd) - 80000000LL, a[i].k, a[i].dummy);
+	if (!gwf_ed_is_sorted(n_a, a))
+		radix_sort_gwf_ed(a, a + n_a);
 	for (i = 1, st = 0, n = 0; i <= n_a; ++i) {
 		if (i == n_a || a[i].vd != a[st].vd) {
 			int32_t j, max_j = st;
-			for (j = st + 1; j < i; ++j) // choose the far end (i.e. the wavefront)
-				if (a[max_j].k < a[j].k) max_j = j;
+			if (st + 1 < i)
+				for (j = st + 1; j < i; ++j) // choose the far end (i.e. the wavefront)
+					if (a[max_j].k < a[j].k) max_j = j;
 			a[n++] = a[max_j];
 			st = i;
 		}
@@ -188,8 +198,7 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 	a[0].vd = (uint64_t)v0<<32 | 80000000LL, a[0].k = -1; // the initial state
 	while (n_a > 0) {
 		a = gwf_ed_extend(km, g, ql, q, v1, &end_v, &end_off, &n_a, a, h);
-		if (g->n_vtx > 1)
-			n_a = gwf_ed_dedup(km, n_a, a);
+		n_a = gwf_ed_dedup(km, n_a, a);
 		if (end_off >= 0 || n_a == 0) break;
 		++s;
 #ifdef GWF_DEBUG

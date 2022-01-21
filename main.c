@@ -63,11 +63,12 @@ int main_ed_graph(int argc, char *argv[])
 	ketopt_t o = KETOPT_INIT;
 	gfa_t *gfa;
 	gwf_graph_t *g;
-	int c;
+	int c, print_graph = 0;
 	uint32_t v0 = 0<<1|0; // first segment, forward strand
 	void *km = 0;
 
-	while ((c = ketopt(&o, argc, argv, 1, "", 0)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "p", 0)) >= 0) {
+		if (c == 'p') print_graph = 1;
 	}
 	if (argc - o.ind < 2) {
 		fprintf(stderr, "Usage: test-ed <target.gfa>|<target.fa> <query.fa>\n");
@@ -81,7 +82,8 @@ int main_ed_graph(int argc, char *argv[])
 	g = gwf_gfa2gwf(gfa, v0);
 	gfa_destroy(gfa);
 	gwf_ed_index(km, g);
-	gwf_graph_print(stdout, g);
+	if (print_graph)
+		gwf_graph_print(stdout, g);
 
 	fp = gzopen(argv[o.ind+1], "r");
 	assert(fp);
