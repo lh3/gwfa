@@ -48,8 +48,6 @@ void gwf_cleanup(void *km, gwf_graph_t *g)
 #include "kdq.h"
 #include "kvec.h"
 
-KHASHL_INIT(KH_LOCAL, gwf_set64_t, gwf_set64, uint64_t, kh_hash_dummy, kh_eq_generic)
-
 static inline uint64_t gwf_gen_vd(uint32_t v, int32_t d)
 {
 	return (uint64_t)v<<32 | (80000000LL + d);
@@ -100,7 +98,7 @@ static size_t gwf_intv_merge2(gwf_intv_t *a, size_t n_b, const gwf_intv_t *b, si
 	}
 	while (i < n_b) a[k++] = b[i++];
 	while (j < n_c) a[k++] = c[j++];
-	return k;
+	return gwf_intv_merge_adj(k, a);
 }
 
 /*
@@ -180,23 +178,27 @@ static int32_t gwf_mixed_dedup(int32_t n_a, gwf_diag_t *a, int32_t n_b, gwf_intv
 /*
  * Core GWFA routine
  */
+KHASHL_INIT(KH_LOCAL, gwf_set64_t, gwf_set64, uint64_t, kh_hash_dummy, kh_eq_generic)
+
 typedef struct {
 	void *km;
 	gwf_set64_t *h;
-	gwf_intv_v *intv;
-	gwf_intv_v *tmp, *swap;
+	gwf_intv_v intv;
+	gwf_intv_v tmp, swap;
 } gwf_edbuf_t;
 
 static int32_t gwf_dedup(gwf_edbuf_t *buf, int32_t n_a, gwf_diag_t *a)
 {
-	if (!gwf_intv_is_sorted(buf->tmp->n, buf->tmp->a))
-		radix_sort_gwf_intv(buf->tmp->a, buf->tmp->a + buf->tmp->n);
-	kv_copy(gwf_intv_t, buf->km, *buf->swap, *buf->intv);
-	kv_resize(gwf_intv_t, buf->km, *buf->intv, buf->intv->n + buf->tmp->n);
-	buf->intv->n = gwf_intv_merge2(buf->intv->a, buf->swap->n, buf->swap->a, buf->tmp->n, buf->tmp->a);
-	buf->intv->n = gwf_intv_merge_adj(buf->intv->n, buf->intv->a);
+	if (buf->intv.n + buf->tmp.n > 0) {
+		if (!gwf_intv_is_sorted(buf->tmp.n, buf->tmp.a))
+			radix_sort_gwf_intv(buf->tmp.a, buf->tmp.a + buf->tmp.n);
+		kv_copy(gwf_intv_t, buf->km, buf->swap, buf->intv);
+		kv_resize(gwf_intv_t, buf->km, buf->intv, buf->intv.n + buf->tmp.n);
+		buf->intv.n = gwf_intv_merge2(buf->intv.a, buf->swap.n, buf->swap.a, buf->tmp.n, buf->tmp.a);
+	}
 	n_a = gwf_diag_dedup(n_a, a);
-	n_a = gwf_mixed_dedup(n_a, a, buf->intv->n, buf->intv->a);
+	if (buf->intv.n > 0)
+		n_a = gwf_mixed_dedup(n_a, a, buf->intv.n, buf->intv.a);
 	return n_a;
 }
 
@@ -216,7 +218,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 
 	B = kdq_init2(gwf_diag_t, buf->km, A->bits + 1); // $B is a stack; could be replaced with a simple vector
 	gwf_set64_clear(buf->h); // hash table $h to avoid visiting a vertex twice
-	buf->tmp->n = 0;
+	buf->tmp.n = 0;
 	while (kdq_size(A)) {
 		gwf_diag_t t = *kdq_shift(gwf_diag_t, A);
 		uint32_t v = t.vd >> 32; // vertex
@@ -235,7 +237,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 		} else if (i + 1 < ql) { // k + 1 == g->len[v]; reaching the end of the vertex but not the end of query
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j, n_ext = 0;
 			gwf_intv_t *p;
-			kv_pushp(gwf_intv_t, buf->km, *buf->tmp, &p);
+			kv_pushp(gwf_intv_t, buf->km, buf->tmp, &p);
 			p->vd0 = gwf_gen_vd(v, d), p->vd1 = p->vd0 + 1;
 			for (j = 0; j < nv; ++j) { // traverse $v's neighbors
 				uint32_t w = (uint32_t)g->arc[ov + j]; // $w is next to $v
@@ -298,6 +300,6 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 #endif
 	}
 	gwf_set64_destroy(buf.h);
-	kfree(km, buf.intv->a); kfree(km, buf.tmp->a); kfree(km, buf.swap->a);
+	kfree(km, buf.intv.a); kfree(km, buf.tmp.a); kfree(km, buf.swap.a);
 	return end_v >= 0? s : -1; // end_v < 0 could happen if v0 can't reach v1
 }
