@@ -72,14 +72,14 @@ static int gwf_intv_is_sorted(int32_t n_a, const gwf_intv_t *a)
 		if (a[i-1].vd0 > a[i].vd0) break;
 	return (i == n_a);
 }
-/*
-static void print_intv(size_t n, gwf_intv_t *a)
+
+void gwf_ed_print_intv(size_t n, gwf_intv_t *a)
 {
 	size_t i;
 	for (i = 0; i < n; ++i)
 		printf("Z\t%d\t%d\t%d\n", (int32_t)(a[i].vd0>>32), (int32_t)a[i].vd0 - 80000000, (int32_t)a[i].vd1 - 80000000);
 }
-*/
+
 static size_t gwf_intv_merge_adj(size_t n, gwf_intv_t *a) // assume sorted
 {
 	size_t i, k;
@@ -93,7 +93,6 @@ static size_t gwf_intv_merge_adj(size_t n, gwf_intv_t *a) // assume sorted
 		} else en = en > a[i].vd1? en : a[i].vd1;
 	}
 	a[k].vd0 = st, a[k++].vd1 = en;
-//	print_intv(k, a);
 	return k;
 }
 
@@ -209,12 +208,8 @@ static int32_t gwf_dedup(gwf_edbuf_t *buf, int32_t n_a, gwf_diag_t *a)
 	if (buf->intv.n > 0)
 		n_a = gwf_mixed_dedup(n_a, a, buf->intv.n, buf->intv.a);
 #ifdef GWF_DEBUG
-	if (n0 == 2049) {
-		int32_t i;
-		for (i = 0; i < buf->intv.n; ++i)
-			printf("Y\t%d\t%d\t%d\n", (int32_t)(buf->intv.a[i].vd0>>32), (int32_t)buf->intv.a[i].vd0 - 80000000, (int32_t)buf->intv.a[i].vd1 - 80000000);
-	}
-	printf("[%s] %ld, %d -> %d -> %d\n", __func__, buf->intv.n, n0, n1, n_a);
+	printf("[%s] intv.n=%ld; dedup: %d -> %d -> %d\n", __func__, buf->intv.n, n0, n1, n_a);
+//	if (buf->intv.n == 400) gwf_ed_print_intv(buf->intv.n, buf->intv.a);
 #endif
 	return n_a;
 }
