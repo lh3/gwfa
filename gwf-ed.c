@@ -72,14 +72,14 @@ static int gwf_intv_is_sorted(int32_t n_a, const gwf_intv_t *a)
 		if (a[i-1].vd0 > a[i].vd0) break;
 	return (i == n_a);
 }
-
+/*
 static void print_intv(size_t n, gwf_intv_t *a)
 {
 	size_t i;
 	for (i = 0; i < n; ++i)
 		printf("Z\t%d\t%d\t%d\n", (int32_t)(a[i].vd0>>32), (int32_t)a[i].vd0 - 80000000, (int32_t)a[i].vd1 - 80000000);
 }
-
+*/
 static size_t gwf_intv_merge_adj(size_t n, gwf_intv_t *a) // assume sorted
 {
 	size_t i, k;
@@ -173,7 +173,7 @@ static int32_t gwf_mixed_dedup(int32_t n_a, gwf_diag_t *a, int32_t n_b, gwf_intv
 {
 	int32_t i = 0, j = 0, k = 0;
 	while (i < n_a && j < n_b) {
-		printf("Z\t%d\t%d\t%d\t%d\t%d\n", (uint32_t)(a[i].vd>>32), (int32_t)a[i].vd - 80000000, (uint32_t)(b[j].vd0>>32), (int32_t)b[j].vd0 - 80000000, (int32_t)b[j].vd1 - 80000000);
+		//printf("Z\t%d\t%d\t%d\t%d\t%d\n", (uint32_t)(a[i].vd>>32), (int32_t)a[i].vd - 80000000, (uint32_t)(b[j].vd0>>32), (int32_t)b[j].vd0 - 80000000, (int32_t)b[j].vd1 - 80000000);
 		if (a[i].vd >= b[j].vd0 && a[i].vd < b[j].vd1) ++i;
 		else if (a[i].vd >= b[j].vd1) ++j;
 		else a[k++] = a[i++];
