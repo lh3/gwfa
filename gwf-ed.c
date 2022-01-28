@@ -151,36 +151,39 @@ static int gwf_diag_is_sorted(int32_t n_a, const gwf_diag_t *a)
 	return (i == n_a);
 }
 
-static void gwf_diag_sort(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *swap, gwf_diag_v *ooo)
+static void gwf_diag_sort(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *ooo)
 {
-	int32_t i, j, k, n_ooo = 0;
-	for (i = 0; i < n_a; ++i)
-		if (a[i].ooo) ++n_ooo;
-	kv_resize(gwf_diag_t, km, *ooo, n_ooo);
-	kv_resize(gwf_diag_t, km, *swap, n_a - n_ooo);
-	ooo->n = n_ooo, swap->n = n_a - n_ooo;
+	int32_t i, j, k, n_b, n_c;
+	gwf_diag_t *b, *c;
+
+	kv_resize(gwf_diag_t, km, *ooo, n_a);
+	for (i = 0, n_c = 0; i < n_a; ++i)
+		if (a[i].ooo) ++n_c;
+	n_b = n_a - n_c;
+	b = ooo->a, c = b + n_b;
 	for (i = j = k = 0; i < n_a; ++i) {
-		if (a[i].ooo) ooo->a[k++] = a[i];
-		else swap->a[j++] = a[i];
+		if (a[i].ooo) c[k++] = a[i];
+		else b[j++] = a[i];
 	}
-	radix_sort_gwf_ed(ooo->a, ooo->a + n_ooo);
+	radix_sort_gwf_ed(c, c + n_c);
 
 	i = j = k = 0;
-	while (i < swap->n && j < ooo->n) {
-		if (swap->a[i].vd <= ooo->a[j].vd)
-			a[k++] = swap->a[i++];
-		else a[k++] = ooo->a[j++];
+	while (i < n_b && j < n_c) {
+		if (b[i].vd <= c[j].vd)
+			a[k++] = b[i++];
+		else a[k++] = c[j++];
 	}
-	while (i < swap->n) a[k++] = swap->a[i++];
-	while (j < ooo->n)  a[k++] = ooo->a[j++];
+	while (i < n_b) a[k++] = b[i++];
+	while (j < n_c) a[k++] = c[j++];
+	for (i = 0; i < n_a; ++i) a[i].ooo = 0;
 //	radix_sort_gwf_ed(a, a + n_a);
 }
 
-static int32_t gwf_diag_dedup(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *swap, gwf_diag_v *ooo)
+static int32_t gwf_diag_dedup(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *ooo)
 {
 	int32_t i, n, st;
 	if (!gwf_diag_is_sorted(n_a, a))
-		gwf_diag_sort(n_a, a, km, swap, ooo);
+		gwf_diag_sort(n_a, a, km, ooo);
 	for (i = 1, st = 0, n = 0; i <= n_a; ++i) {
 		if (i == n_a || a[i].vd != a[st].vd) {
 			int32_t j, max_j = st;
@@ -217,7 +220,7 @@ typedef struct {
 	gwf_set64_t *h;
 	gwf_intv_v intv;
 	gwf_intv_v tmp, swap;
-	gwf_diag_v oswap, ooo;
+	gwf_diag_v ooo;
 } gwf_edbuf_t;
 
 static int32_t gwf_dedup(gwf_edbuf_t *buf, int32_t n_a, gwf_diag_t *a)
@@ -230,7 +233,7 @@ static int32_t gwf_dedup(gwf_edbuf_t *buf, int32_t n_a, gwf_diag_t *a)
 		buf->intv.n = gwf_intv_merge2(buf->intv.a, buf->swap.n, buf->swap.a, buf->tmp.n, buf->tmp.a);
 	}
 	int32_t n0 = n_a, n1;
-	n_a = gwf_diag_dedup(n_a, a, buf->km, &buf->oswap, &buf->ooo);
+	n_a = gwf_diag_dedup(n_a, a, buf->km, &buf->ooo);
 	n1 = n_a;
 	if (buf->intv.n > 0)
 		n_a = gwf_mixed_dedup(n_a, a, buf->intv.n, buf->intv.a);
@@ -281,8 +284,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 			for (j = 0; j < nv; ++j) { // traverse $v's neighbors
 				uint32_t w = (uint32_t)g->arc[ov + j]; // $w is next to $v
 				int absent;
-				khint_t itr;
-				itr = gwf_set64_put(buf->h, (uint64_t)w<<32 | (i + 1), &absent); // test if ($w,$i) has been visited
+				gwf_set64_put(buf->h, (uint64_t)w<<32 | (i + 1), &absent); // test if ($w,$i) has been visited
 				if (q[i + 1] == g->seq[w][0]) { // can be extended to the next vertex without a mismatch
 					++n_ext;
 					if (absent) gwf_diag_push(A, w, i+1, 0, 1);
