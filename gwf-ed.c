@@ -73,14 +73,15 @@ static int gwf_intv_is_sorted(int32_t n_a, const gwf_intv_t *a)
 	return (i == n_a);
 }
 
-void gwf_ed_print_intv(size_t n, gwf_intv_t *a)
+void gwf_ed_print_intv(size_t n, gwf_intv_t *a) // for debugging only
 {
 	size_t i;
 	for (i = 0; i < n; ++i)
 		printf("Z\t%d\t%d\t%d\n", (int32_t)(a[i].vd0>>32), (int32_t)a[i].vd0 - 80000000, (int32_t)a[i].vd1 - 80000000);
 }
 
-static size_t gwf_intv_merge_adj(size_t n, gwf_intv_t *a) // assume sorted
+// merge overlapping intervals; input must be sorted
+static size_t gwf_intv_merge_adj(size_t n, gwf_intv_t *a)
 {
 	size_t i, k;
 	uint64_t st, en;
@@ -96,6 +97,7 @@ static size_t gwf_intv_merge_adj(size_t n, gwf_intv_t *a) // assume sorted
 	return k;
 }
 
+// merge two sorted interval lists
 static size_t gwf_intv_merge2(gwf_intv_t *a, size_t n_b, const gwf_intv_t *b, size_t n_c, const gwf_intv_t *c)
 {
 	size_t i = 0, j = 0, k = 0;
@@ -151,6 +153,7 @@ static int gwf_diag_is_sorted(int32_t n_a, const gwf_diag_t *a)
 	return (i == n_a);
 }
 
+// sort a[]. This uses the gwf_diag_t::ooo field to speed up sorting.
 static void gwf_diag_sort(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *ooo)
 {
 	int32_t i, j, k, n_b, n_c;
@@ -176,9 +179,10 @@ static void gwf_diag_sort(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *ooo)
 	while (i < n_b) a[k++] = b[i++];
 	while (j < n_c) a[k++] = c[j++];
 	for (i = 0; i < n_a; ++i) a[i].ooo = 0;
-//	radix_sort_gwf_ed(a, a + n_a);
+//	radix_sort_gwf_ed(a, a + n_a); // the whole function could just call this line but this would be much slower.
 }
 
+// remove diagonals not on the wavefront
 static int32_t gwf_diag_dedup(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *ooo)
 {
 	int32_t i, n, st;
@@ -197,6 +201,7 @@ static int32_t gwf_diag_dedup(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *
 	return n;
 }
 
+// use forbidden bands to remove diagonals not on the wavefront
 static int32_t gwf_mixed_dedup(int32_t n_a, gwf_diag_t *a, int32_t n_b, gwf_intv_t *b)
 {
 	int32_t i = 0, j = 0, k = 0;
@@ -223,6 +228,7 @@ typedef struct {
 	gwf_diag_v ooo;
 } gwf_edbuf_t;
 
+// remove diagonals not on the wavefront
 static int32_t gwf_dedup(gwf_edbuf_t *buf, int32_t n_a, gwf_diag_t *a)
 {
 	if (buf->intv.n + buf->tmp.n > 0) {
@@ -239,7 +245,6 @@ static int32_t gwf_dedup(gwf_edbuf_t *buf, int32_t n_a, gwf_diag_t *a)
 		n_a = gwf_mixed_dedup(n_a, a, buf->intv.n, buf->intv.a);
 #ifdef GWF_DEBUG
 	printf("[%s] intv.n=%ld; dedup: %d -> %d -> %d\n", __func__, buf->intv.n, n0, n1, n_a);
-//	if (buf->intv.n == 400) gwf_ed_print_intv(buf->intv.n, buf->intv.a);
 #endif
 	return n_a;
 }
