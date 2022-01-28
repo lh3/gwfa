@@ -156,6 +156,7 @@ static int gwf_diag_is_sorted(int32_t n_a, const gwf_diag_t *a)
 // sort a[]. This uses the gwf_diag_t::ooo field to speed up sorting.
 static void gwf_diag_sort(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *ooo)
 {
+#if 1
 	int32_t i, j, k, n_b, n_c;
 	gwf_diag_t *b, *c;
 
@@ -179,7 +180,9 @@ static void gwf_diag_sort(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *ooo)
 	while (i < n_b) a[k++] = b[i++];
 	while (j < n_c) a[k++] = c[j++];
 	for (i = 0; i < n_a; ++i) a[i].ooo = 0;
-//	radix_sort_gwf_ed(a, a + n_a); // the whole function could just call this line but this would be much slower.
+#else
+	radix_sort_gwf_ed(a, a + n_a); // the whole function could just call this line but this would be much slower.
+#endif
 }
 
 // remove diagonals not on the wavefront
