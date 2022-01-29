@@ -67,13 +67,18 @@ int main_ed_graph(int argc, char *argv[])
 	uint32_t v0 = 0<<1|0; // first segment, forward strand
 	uint32_t max_lag = 0;
 	void *km = 0;
+	char *sname = 0;
 
-	while ((c = ketopt(&o, argc, argv, 1, "pl:", 0)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "pl:s:", 0)) >= 0) {
 		if (c == 'p') print_graph = 1;
 		else if (c == 'l') max_lag = atoi(o.arg);
+		else if (c == 's') sname = o.arg;
 	}
 	if (argc - o.ind < 2) {
-		fprintf(stderr, "Usage: test-ed <target.gfa>|<target.fa> <query.fa>\n");
+		fprintf(stderr, "Usage: gwf-test [options] <target.gfa|fa> <query.fa>\n");
+		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -l INT    max lag behind the furthest wavefront; 0 to disable [0]\n");
+		fprintf(stderr, "  -s STR    starting segment name [first]\n");
 		return 1;
 	}
 
@@ -81,6 +86,12 @@ int main_ed_graph(int argc, char *argv[])
 
 	gfa = gfa_read(argv[o.ind]);
 	assert(gfa);
+	if (sname) {
+		int32_t sid;
+		sid = gfa_name2id(gfa, sname);
+		if (sid < 0) fprintf(stderr, "ERROR: failed to find segment '%s'\n", sname);
+		else v0 = sid<<1 | 0; // TODO: also allow to change the orientation
+	}
 	g = gwf_gfa2gwf(gfa, v0);
 	gfa_destroy(gfa);
 	gwf_ed_index(km, g);

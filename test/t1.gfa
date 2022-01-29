@@ -1,0 +1,7 @@
+S	v0	CA
+S	v1	T
+S	v2	TA
+L	v0	+	v1	+	0M
+L	v1	+	v2	+	0M
+L	v1	+	v0	+	0M
+L	v2	+	v1	+	0M

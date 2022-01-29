@@ -115,9 +115,9 @@ static size_t gwf_intv_merge2(gwf_intv_t *a, size_t n_b, const gwf_intv_t *b, si
  * Diagonal
  */
 typedef struct { // a diagonal
-	uint64_t vd; // NB: this wastes 4 bytes due to memory alignment
+	uint64_t vd; // higher 32 bits: vertex ID; lower 32 bits: diagonal+0x4000000
 	int32_t k;
-	uint32_t xo;
+	uint32_t xo; // higher 31 bits: anti diagonal; lower 1 bit: out-of-order or not
 } gwf_diag_t;
 
 typedef kvec_t(gwf_diag_t) gwf_diag_v;
@@ -301,7 +301,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 		gwf_diag_t t = *kdq_shift(gwf_diag_t, A);
 		uint32_t x0, ooo = t.xo&1, v = t.vd >> 32; // vertex
 		int32_t d = (int32_t)t.vd - 0x40000000; // diagonal
-		int32_t k = t.k; // wavefront position
+		int32_t k = t.k; // wavefront position on the vertex
 		int32_t i, vl = g->len[v]; // $vl is the vertex length
 		{ // extend the diagonal $d to the wavefront
 			// This block is equivalent to
@@ -312,13 +312,13 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 				++k;
 		}
 		i = k + d; // query position
-		x0 = (t.xo>>1) + ((k - t.k) << 1);
+		x0 = (t.xo >> 1) + ((k - t.k) << 1); // current anti diagonal
 		if (k + 1 < vl && i + 1 < ql) { // the most common case: the wavefront is in the middle
 			int32_t push1 = 1, push2 = 1;
 			if (B.n >= 2) push1 = gwf_diag_update(&B.a[B.n - 2], v, d-1, k+1, x0 + 1, ooo);
 			if (B.n >= 1) push2 = gwf_diag_update(&B.a[B.n - 1], v, d,   k+1, x0 + 2, ooo);
-			if (push1) gwf_diag_push(buf->km, &B, v, d-1, k+1, x0 + 1, 1);
-			if (push2 || push1) gwf_diag_push(buf->km, &B, v, d, k+1, x0 + 2, 1);
+			if (push1)          gwf_diag_push(buf->km, &B, v, d-1, k+1, x0 + 1, 1);
+			if (push2 || push1) gwf_diag_push(buf->km, &B, v, d,   k+1, x0 + 2, 1);
 			gwf_diag_push(buf->km, &B, v, d+1, k, x0 + 1, ooo);
 		} else if (i + 1 < ql) { // k + 1 == g->len[v]; reaching the end of the vertex but not the end of query
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j, n_ext = 0;
