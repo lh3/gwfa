@@ -268,18 +268,19 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	while (kdq_size(A)) {
 		gwf_diag_t t = *kdq_shift(gwf_diag_t, A);
 		uint32_t v = t.vd >> 32; // vertex
-		int32_t i, d = (int32_t)t.vd - 0x40000000; // diagonal
-		int32_t k = (int32_t)t.k; // wave front position
+		int32_t d = (int32_t)t.vd - 0x40000000; // diagonal
+		int32_t k = (int32_t)t.k; // wavefront position
+		int32_t i, vl = g->len[v]; // $vl is the vertex length
 		{ // extend the diagonal $d to the wavefront
 			// This block is equivalent to
 			//   i = k + d; while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1]) ++k, ++i;
-			int32_t max_k = (ql - d < g->len[v]? ql - d : g->len[v]) - 1;
+			int32_t max_k = (ql - d < vl? ql - d : vl) - 1;
 			const char *ts = g->seq[v] + 1, *qs = q + d + 1;
 			while (k < max_k && *(ts + k) == *(qs + k))
 				++k;
 		}
 		i = k + d; // query position
-		if (k + 1 < g->len[v] && i + 1 < ql) { // the most common case: the wavefront is in the middle
+		if (k + 1 < vl && i + 1 < ql) { // the most common case: the wavefront is in the middle
 			int32_t push1 = 1, push2 = 1;
 			if (B->count >= 2) push1 = gwf_diag_update(&B->a[B->count - 2], v, d-1, k+1, t.ooo);
 			if (B->count >= 1) push2 = gwf_diag_update(&B->a[B->count - 1], v, d,   k+1, t.ooo);
@@ -305,12 +306,12 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 			}
 			if (nv == 0 || n_ext != nv) // add an insertion to the target; this *might* cause a duplicate in corner cases
 				gwf_diag_push(B, v, d+1, k, 1);
-		} else if (v1 < 0 || (v == v1 && k + 1 == g->len[v])) { // i + 1 == ql
+		} else if (v1 < 0 || (v == v1 && k + 1 == vl)) { // i + 1 == ql
 			*end_v = v, *end_off = k, *n_a_ = 0;
 			kdq_destroy(gwf_diag_t, A);
 			kdq_destroy(gwf_diag_t, B);
 			return 0;
-		} else if (k + 1 < g->len[v]) { // i + 1 == ql; reaching the end of the query but not the end of the vertex
+		} else if (k + 1 < vl) { // i + 1 == ql; reaching the end of the query but not the end of the vertex
 			gwf_diag_push(B, v, d-1, k+1, t.ooo); // add an deletion; this *might* case a duplicate in corner cases
 		} else if (v != v1) { // i + 1 == ql && k + 1 == g->len[v]; not reaching the last vertex $v1
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j;
