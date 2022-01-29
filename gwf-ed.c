@@ -137,7 +137,14 @@ void gwf_ed_print_diag(size_t n, gwf_diag_t *a) // for debugging only
 }
 
 // push (v,d,k) to the end of the queue
-static inline void gwf_diag_push(kdq_t(gwf_diag_t) *a, uint32_t v, int32_t d, int32_t k, uint32_t x, uint32_t ooo)
+static inline void gwf_diag_push(void *km, gwf_diag_v *a, uint32_t v, int32_t d, int32_t k, uint32_t x, uint32_t ooo)
+{
+	gwf_diag_t *p;
+	kv_pushp(gwf_diag_t, km, *a, &p);
+	p->vd = gwf_gen_vd(v, d), p->k = k, p->xo = x<<1|ooo;
+}
+
+static inline void gwf_diag_push_queue(kdq_t(gwf_diag_t) *a, uint32_t v, int32_t d, int32_t k, uint32_t x, uint32_t ooo)
 {
 	gwf_diag_t *p;
 	p = kdq_pushp(gwf_diag_t, a);
@@ -274,7 +281,8 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 								 int32_t *end_v, int32_t *end_off, int32_t *n_a_, gwf_diag_t *a)
 {
 	int32_t i, x, n = *n_a_;
-	kdq_t(gwf_diag_t) *A, *B;
+	kdq_t(gwf_diag_t) *A;
+	gwf_diag_v B = {0,0,0};
 	gwf_diag_t *b;
 
 	*end_v = -1, *end_off = -1;
@@ -286,7 +294,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	memcpy(A->a, a, n * sizeof(*a));
 	kfree(buf->km, a); // $a is not used as it has been copied to $A
 
-	B = kdq_init2(gwf_diag_t, buf->km, A->bits + 1); // $B is a stack; could be replaced with a simple vector
+	kv_resize(gwf_diag_t, buf->km, B, n * 2);
 	gwf_set64_clear(buf->h); // hash table $h to avoid visiting a vertex twice
 	buf->tmp.n = 0;
 	while (kdq_size(A)) {
@@ -307,11 +315,11 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 		x0 = (t.xo>>1) + ((k - t.k) << 1);
 		if (k + 1 < vl && i + 1 < ql) { // the most common case: the wavefront is in the middle
 			int32_t push1 = 1, push2 = 1;
-			if (B->count >= 2) push1 = gwf_diag_update(&B->a[B->count - 2], v, d-1, k+1, x0 + 1, ooo);
-			if (B->count >= 1) push2 = gwf_diag_update(&B->a[B->count - 1], v, d,   k+1, x0 + 2, ooo);
-			if (push1) gwf_diag_push(B, v, d-1, k+1, x0 + 1, 1);
-			if (push2 || push1) gwf_diag_push(B, v, d, k+1, x0 + 2, 1);
-			gwf_diag_push(B, v, d+1, k, x0 + 1, ooo);
+			if (B.n >= 2) push1 = gwf_diag_update(&B.a[B.n - 2], v, d-1, k+1, x0 + 1, ooo);
+			if (B.n >= 1) push2 = gwf_diag_update(&B.a[B.n - 1], v, d,   k+1, x0 + 2, ooo);
+			if (push1) gwf_diag_push(buf->km, &B, v, d-1, k+1, x0 + 1, 1);
+			if (push2 || push1) gwf_diag_push(buf->km, &B, v, d, k+1, x0 + 2, 1);
+			gwf_diag_push(buf->km, &B, v, d+1, k, x0 + 1, ooo);
 		} else if (i + 1 < ql) { // k + 1 == g->len[v]; reaching the end of the vertex but not the end of query
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j, n_ext = 0;
 			gwf_intv_t *p;
@@ -323,26 +331,26 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 				gwf_set64_put(buf->h, (uint64_t)w<<32 | (i + 1), &absent); // test if ($w,$i) has been visited
 				if (q[i + 1] == g->seq[w][0]) { // can be extended to the next vertex without a mismatch
 					++n_ext;
-					if (absent) gwf_diag_push(A, w, i+1, 0, x0 + 2, 1);
+					if (absent) gwf_diag_push_queue(A, w, i+1, 0, x0 + 2, 1);
 				} else if (absent) {
-					gwf_diag_push(B, w, i,   0, x0 + 1, 1);
-					gwf_diag_push(B, w, i+1, 0, x0 + 2, 1);
+					gwf_diag_push(buf->km, &B, w, i,   0, x0 + 1, 1);
+					gwf_diag_push(buf->km, &B, w, i+1, 0, x0 + 2, 1);
 				}
 			}
 			if (nv == 0 || n_ext != nv) // add an insertion to the target; this *might* cause a duplicate in corner cases
-				gwf_diag_push(B, v, d+1, k, x0 + 1, 1);
+				gwf_diag_push(buf->km, &B, v, d+1, k, x0 + 1, 1);
 		} else if (v1 < 0 || (v == v1 && k + 1 == vl)) { // i + 1 == ql
 			*end_v = v, *end_off = k, *n_a_ = 0;
 			kdq_destroy(gwf_diag_t, A);
-			kdq_destroy(gwf_diag_t, B);
+			kfree(buf->km, B.a);
 			return 0;
 		} else if (k + 1 < vl) { // i + 1 == ql; reaching the end of the query but not the end of the vertex
-			gwf_diag_push(B, v, d-1, k+1, x0 + 1, ooo); // add an deletion; this *might* case a duplicate in corner cases
+			gwf_diag_push(buf->km, &B, v, d-1, k+1, x0 + 1, ooo); // add an deletion; this *might* case a duplicate in corner cases
 		} else if (v != v1) { // i + 1 == ql && k + 1 == g->len[v]; not reaching the last vertex $v1
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j;
 			for (j = 0; j < nv; ++j) {
 				uint32_t w = (uint32_t)g->arc[ov + j];
-				gwf_diag_push(B, w, i, 0, x0 + 1, 1); // deleting the first base on the next vertex
+				gwf_diag_push(buf->km, &B, w, i, 0, x0 + 1, 1); // deleting the first base on the next vertex
 			}
 		} else {
 			assert(0); // should never come here
@@ -350,8 +358,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	}
 
 	kdq_destroy(gwf_diag_t, A);
-	n = kdq_size(B), b = B->a, B->a = 0;
-	kdq_destroy(gwf_diag_t, B);
+	n = B.n, b = B.a;
 
 	*n_a_ = n = gwf_dedup(buf, n, b);
 	if (max_lag > 0) *n_a_ = n = gwf_prune(n, b, max_lag);
