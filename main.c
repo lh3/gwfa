@@ -65,10 +65,12 @@ int main_ed_graph(int argc, char *argv[])
 	gwf_graph_t *g;
 	int c, print_graph = 0;
 	uint32_t v0 = 0<<1|0; // first segment, forward strand
+	uint32_t max_lag = 0;
 	void *km = 0;
 
-	while ((c = ketopt(&o, argc, argv, 1, "p", 0)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "pl:", 0)) >= 0) {
 		if (c == 'p') print_graph = 1;
+		else if (c == 'l') max_lag = atoi(o.arg);
 	}
 	if (argc - o.ind < 2) {
 		fprintf(stderr, "Usage: test-ed <target.gfa>|<target.fa> <query.fa>\n");
@@ -90,7 +92,7 @@ int main_ed_graph(int argc, char *argv[])
 	ks = kseq_init(fp);
 	while (kseq_read(ks) >= 0) {
 		int32_t s;
-		s = gwf_ed(km, g, ks->seq.l, ks->seq.s, 0, -1);
+		s = gwf_ed(km, g, ks->seq.l, ks->seq.s, 0, -1, max_lag);
 		printf("%s\t%d\n", ks->name.s, s);
 	}
 	kseq_destroy(ks);
@@ -140,7 +142,7 @@ int main_test(int argc, char *argv[])
 		g->len[v] = strlen(g->seq[v]);
 
 	gwf_ed_index(km, g);
-	s = gwf_ed(km, g, ql, q, v0, v1);
+	s = gwf_ed(km, g, ql, q, v0, v1, 0);
 
 	printf("%d\n", s);
 
