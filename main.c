@@ -102,50 +102,6 @@ int main_ed_graph(int argc, char *argv[])
 	return 0;
 }
 
-int main_ed(int argc, char *argv[])
-{
-	gzFile fp1, fp2;
-	kseq_t *ks1, *ks2;
-	ketopt_t o = KETOPT_INIT;
-	gwf_graph_t *g;
-	int c, s;
-	void *km = 0;
-
-	while ((c = ketopt(&o, argc, argv, 1, "", 0)) >= 0) {
-	}
-	if (argc - o.ind < 2) {
-		fprintf(stderr, "Usage: test-ed <in1.fa> <in2.fa>\n");
-		return 1;
-	}
-
-	fp1 = gzopen(argv[o.ind+0], "r");
-	fp2 = gzopen(argv[o.ind+1], "r");
-	assert(fp1 && fp2);
-	ks1 = kseq_init(fp1);
-	ks2 = kseq_init(fp2);
-	kseq_read(ks1);
-	kseq_read(ks2);
-
-	g = (gwf_graph_t*)calloc(1, sizeof(*g));
-	g->n_vtx = 1, g->n_arc = 0;
-	g->seq = calloc(g->n_vtx, sizeof(*g->seq));
-	g->seq[0] = strdup(ks1->seq.s);
-	g->len = (uint32_t*)calloc(g->n_vtx, sizeof(*g->len));
-	g->len[0] = ks1->seq.l;
-
-	gwf_ed_index(km, g);
-	s = gwf_ed(km, g, ks2->seq.l, ks2->seq.s, 0, 0);
-	gwf_cleanup(km, g);
-	printf("%d\n", s);
-
-	kseq_destroy(ks1);
-	kseq_destroy(ks2);
-	gzclose(fp1);
-	gzclose(fp2);
-	return 0;
-}
-
-
 int main_test(int argc, char *argv[])
 {
 	gwf_graph_t *g;

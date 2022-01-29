@@ -50,7 +50,7 @@ void gwf_cleanup(void *km, gwf_graph_t *g)
 
 static inline uint64_t gwf_gen_vd(uint32_t v, int32_t d)
 {
-	return (uint64_t)v<<32 | (80000000LL + d);
+	return (uint64_t)v<<32 | (0x40000000 + d);
 }
 
 /*
@@ -77,7 +77,7 @@ void gwf_ed_print_intv(size_t n, gwf_intv_t *a) // for debugging only
 {
 	size_t i;
 	for (i = 0; i < n; ++i)
-		printf("Z\t%d\t%d\t%d\n", (int32_t)(a[i].vd0>>32), (int32_t)a[i].vd0 - 80000000, (int32_t)a[i].vd1 - 80000000);
+		printf("Z\t%d\t%d\t%d\n", (int32_t)(a[i].vd0>>32), (int32_t)a[i].vd0 - 0x40000000, (int32_t)a[i].vd1 - 0x40000000);
 }
 
 // merge overlapping intervals; input must be sorted
@@ -156,7 +156,6 @@ static int gwf_diag_is_sorted(int32_t n_a, const gwf_diag_t *a)
 // sort a[]. This uses the gwf_diag_t::ooo field to speed up sorting.
 static void gwf_diag_sort(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *ooo)
 {
-#if 1
 	int32_t i, j, k, n_b, n_c;
 	gwf_diag_t *b, *c;
 
@@ -170,6 +169,7 @@ static void gwf_diag_sort(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *ooo)
 		else b[j++] = a[i];
 	}
 	radix_sort_gwf_ed(c, c + n_c);
+	for (k = 0; k < n_c; ++k) c[k].ooo = 0;
 
 	i = j = k = 0;
 	while (i < n_b && j < n_c) {
@@ -179,10 +179,6 @@ static void gwf_diag_sort(int32_t n_a, gwf_diag_t *a, void *km, gwf_diag_v *ooo)
 	}
 	while (i < n_b) a[k++] = b[i++];
 	while (j < n_c) a[k++] = c[j++];
-	for (i = 0; i < n_a; ++i) a[i].ooo = 0;
-#else
-	radix_sort_gwf_ed(a, a + n_a); // the whole function could just call this line but this would be much slower.
-#endif
 }
 
 // remove diagonals not on the wavefront
@@ -209,7 +205,6 @@ static int32_t gwf_mixed_dedup(int32_t n_a, gwf_diag_t *a, int32_t n_b, gwf_intv
 {
 	int32_t i = 0, j = 0, k = 0;
 	while (i < n_a && j < n_b) {
-		//printf("Z\t%d\t%d\t%d\t%d\t%d\n", (uint32_t)(a[i].vd>>32), (int32_t)a[i].vd - 80000000, (uint32_t)(b[j].vd0>>32), (int32_t)b[j].vd0 - 80000000, (int32_t)b[j].vd1 - 80000000);
 		if (a[i].vd >= b[j].vd0 && a[i].vd < b[j].vd1) ++i;
 		else if (a[i].vd >= b[j].vd1) ++j;
 		else a[k++] = a[i++];
@@ -263,7 +258,8 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 		if (x >= n) break;
 	if (i < 4) i = 4;
 	A = kdq_init2(gwf_diag_t, buf->km, i); // $A is a queue
-	for (i = 0; i < n; ++i) *kdq_pushp(gwf_diag_t, A) = a[i]; // copy $a to $A; only necessary for graphs
+	A->count = n;
+	memcpy(A->a, a, n * sizeof(*a));
 	kfree(buf->km, a); // $a is not used as it has been copied to $A
 
 	B = kdq_init2(gwf_diag_t, buf->km, A->bits + 1); // $B is a stack; could be replaced with a simple vector
@@ -272,7 +268,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	while (kdq_size(A)) {
 		gwf_diag_t t = *kdq_shift(gwf_diag_t, A);
 		uint32_t v = t.vd >> 32; // vertex
-		int32_t d = (int64_t)((uint32_t)t.vd) - 80000000LL; // diagonal
+		int32_t d = (int32_t)t.vd - 0x40000000; // diagonal
 		int32_t k = (int32_t)t.k; // wave front position
 		int32_t i = k + d; // query position
 		while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1]) // extend the diagonal $d to the wavefront
