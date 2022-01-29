@@ -268,11 +268,17 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	while (kdq_size(A)) {
 		gwf_diag_t t = *kdq_shift(gwf_diag_t, A);
 		uint32_t v = t.vd >> 32; // vertex
-		int32_t d = (int32_t)t.vd - 0x40000000; // diagonal
+		int32_t i, d = (int32_t)t.vd - 0x40000000; // diagonal
 		int32_t k = (int32_t)t.k; // wave front position
-		int32_t i = k + d; // query position
-		while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1]) // extend the diagonal $d to the wavefront
-			++i, ++k;
+		{ // extend the diagonal $d to the wavefront
+			// This block is equivalent to
+			//   i = k + d; while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1]) ++k, ++i;
+			int32_t max_k = (ql - d < g->len[v]? ql - d : g->len[v]) - 1;
+			const char *ts = g->seq[v] + 1, *qs = q + d + 1;
+			while (k < max_k && *(ts + k) == *(qs + k))
+				++k;
+		}
+		i = k + d; // query position
 		if (k + 1 < g->len[v] && i + 1 < ql) { // the most common case: the wavefront is in the middle
 			int32_t push1 = 1, push2 = 1;
 			if (B->count >= 2) push1 = gwf_diag_update(&B->a[B->count - 2], v, d-1, k+1, t.ooo);
