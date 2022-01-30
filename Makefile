@@ -33,7 +33,7 @@ depend:
 gfa-base.o: gfa-priv.h gfa.h kstring.h khash.h kalloc.h ksort.h
 gfa-io.o: kstring.h gfa-priv.h gfa.h kseq.h
 gfa-sub.o: gfa-priv.h gfa.h kalloc.h kavl.h khash.h ksort.h
-gwf-ed.o: gwfa.h kalloc.h ksort.h khashl.h kdq.h
+gwf-ed.o: gwfa.h kalloc.h ksort.h khashl.h kdq.h kvec.h
 gwfa-lin.o: gwfa.h kalloc.h ksort.h
 kalloc.o: kalloc.h
-main.o: gfa.h gfa-priv.h gwfa.h ketopt.h kseq.h
+main.o: gfa.h gfa-priv.h gwfa.h ketopt.h kalloc.h kseq.h
