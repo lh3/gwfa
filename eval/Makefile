@@ -7,8 +7,8 @@ INCLUDES=
 PROG=		test-edlib test-wfa
 LIBS=		-lz -lpthread -lm
 
-EDLIB_ROOT=edlib # point to edlib source code directory
-WFA_ROOT=WFA     # point to compiled WFA source code directory
+EDLIB_ROOT=edlib
+WFA_ROOT=WFA
 
 .SUFFIXES:.c .o
 .PHONY:all clean depend
