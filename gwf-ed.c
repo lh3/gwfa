@@ -277,6 +277,68 @@ static int32_t gwf_prune(int32_t n_a, gwf_diag_t *a, uint32_t max_lag)
 	return j;
 }
 
+#define GWF_MIN_BATCH 8
+
+static int32_t gwf_ed_extend_batch(gwf_edbug_t *buf, const gwf_graph_t *g, int32_t ql, const char *q, kdq_t(gwf_diag_t) *A, gwf_diag_v *B)
+{
+	uint32_t j, n, m;
+	int32_t v, vl, d0;
+	gwf_diag_t *p, *q, *a, *b;
+
+	if (kdq_at(A, 0).xo&1) return 0;
+	for (n = 1; n < kdq_size(A); ++n)
+		if (kdq_at(A, n).vd != kdq_at(A, n - 1).vd + 1 || (kdq_at(A, n).xo&1))
+			break;
+	if (n < GWF_MIN_BATCH) return 0;
+	if (A->front + n > 1LL<<A->bits) return 0; // wrap around kdq
+
+	a = &A->a[A->front];
+	v = a->vd>>32;
+	vl = g->len[v];
+	d0 = (int32_t)a->vd - 0x40000000;
+
+	// extend
+	for (j = 0; j < n; ++j) {
+		gwf_diag_t *p = &a[j];
+		int32_t d = d0 + j;
+		int32_t k = t.k; // wavefront position on the vertex
+		int32_t max_k = (ql - d < vl? ql - d : vl) - 1;
+		const char *ts = g->seq[v] + 1, *qs = q + d + 1;
+		while (k < max_k && *(ts + k) == *(qs + k))
+			++k;
+		t.xo += (k - t.k) << 2;
+		t.k = k;
+	}
+
+	// next
+	kv_resize(gwf_diag_t, buf->km, *B, B->n + n + 2);
+	b = &B->a[B->n];
+	memset(b, 0, (n + 2) * sizeof(*b));
+	
+	b[0].vd = a[0].vd - 1;
+	b[0].k = a[0].k + 1;
+	b[1].vd = a[0].vd;
+	b[1].k = (a[0].k > a[1].k? a[0].k : a[1].k) + 1;
+	for (j = 1; j < n - 1; ++j) {
+		gwf_diag_t *q;
+		int32_t k;
+		k = a[j-1].k;
+		k = k > a[j+1].k + 1? k : a[j+1].k + 1;
+		k = k > a[j].k + 1? k : a[j].k + 1;
+		b[j+1].vd = a[j].vd, b[j+1].k = k;
+	}
+	b[n].vd = a[n].vd;
+	b[n].k = a[n-1].k > a[n].k + 1? a[n-1].k : a[n].k + 1;
+	b[n+1].vd = a[n].vd + 1;
+	b[n+1].k = a[n].k;
+
+	// drop out-of-bound cells
+	for (j = 0; j < n + 2; ++j) {
+	}
+
+	B->n += n + 2;
+}
+
 static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v1, uint32_t max_lag,
 								 int32_t *end_v, int32_t *end_off, int32_t *n_a_, gwf_diag_t *a)
 {
