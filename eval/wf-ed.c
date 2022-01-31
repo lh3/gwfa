@@ -17,7 +17,7 @@ static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const c
 	wf_diag_t *a = A->a, *b;
 
 	// extend
-#if 0
+#if 1
 	for (j = 0; j < n; ++j) {
 		wf_diag_t *p = &a[j];
 		int32_t k = p->k;
@@ -82,7 +82,7 @@ int32_t wf_ed(void *km, int32_t tl, const char *ts, int32_t ql, const char *qs)
 		int32_t ret = wf_step(km, tl, ts, ql, qs, &A, &B);
 		if (ret) break;
 		++s;
-		printf("[%s] s=%d, n=%ld\n", __func__, s, A.n);
+//		printf("[%s] s=%d, n=%ld\n", __func__, s, A.n);
 	}
 	kfree(km, A.a);
 	kfree(km, B.a);
