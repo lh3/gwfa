@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include "kalloc.h"
 #include "kvec.h"
@@ -23,8 +24,19 @@ static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const c
 		int32_t k = p->k;
 		int32_t max_k = (ql - p->d < tl? ql - p->d : tl) - 1;
 		const char *ts_ = ts + 1, *qs_ = qs + p->d + 1;
-		while (k < max_k && *(ts_ + k) == *(qs_ + k))
-			++k;
+		uint64_t cmp = 0;
+		while (k + 7 < max_k) {
+			uint64_t x = *(uint64_t*)(ts_ + k);
+			uint64_t y = *(uint64_t*)(qs_ + k);
+			cmp = x ^ y;
+			if (cmp == 0) k += 8;
+			else break;
+		}
+		if (cmp)
+			k += __builtin_ctzl(cmp) >> 3;
+		else if (k + 7 >= max_k)
+			while (k < max_k && *(ts_ + k) == *(qs_ + k))
+				++k;
 		if (k + p->d == ql - 1) return 1; // found semi glocal
 		p->k = k;
 	}
