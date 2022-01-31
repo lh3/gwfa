@@ -14,11 +14,20 @@ typedef kvec_t(wf_diag_t) wf_diag_v;
 
 static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const char *qs, wf_diag_v *A, wf_diag_v *B)
 {
-	int32_t j, n = A->n;
+	int32_t j, n = A->n, m;
 	wf_diag_t *a = A->a, *b;
 
-	// extend
-#if 1
+	// wfa_extend
+#if 0 // unoptimized original version
+	for (j = 0; j < n; ++j) {
+		wf_diag_t *p = &a[j];
+		int32_t k = p->k, i = k + p->d;
+		while (k + 1 < tl && i + 1 < ql && ts[k+1] == qs[i+1])
+			++k, ++i;
+		if (i == ql - 1) return 1; // found semi glocal
+		p->k = k;
+	}
+#else // optimized version learned WFA
 	for (j = 0; j < n; ++j) {
 		wf_diag_t *p = &a[j];
 		int32_t k = p->k;
@@ -40,18 +49,9 @@ static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const c
 		if (k + p->d == ql - 1) return 1; // found semi glocal
 		p->k = k;
 	}
-#else
-	for (j = 0; j < n; ++j) {
-		wf_diag_t *p = &a[j];
-		int32_t k = p->k, i = k + p->d;
-		while (k + 1 < tl && i + 1 < ql && ts[k+1] == qs[i+1])
-			++k, ++i;
-		if (i == ql - 1) return 1; // found semi glocal
-		p->k = k;
-	}
 #endif
 
-	// next
+	// wfa_next
 	kv_resize(wf_diag_t, km, *B, n + 2);
 	b = B->a, B->n = 0;
 	b[0].d = a[0].d - 1;
@@ -59,8 +59,7 @@ static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const c
 	b[1].d = a[0].d;
 	b[1].k = (n == 1 || a[0].k > a[1].k? a[0].k : a[1].k) + 1;
 	for (j = 1; j < n - 1; ++j) {
-		int32_t k;
-		k = a[j-1].k;
+		int32_t k = a[j-1].k;
 		k = k > a[j+1].k + 1? k : a[j+1].k + 1;
 		k = k > a[j].k + 1? k : a[j].k + 1;
 		b[j+1].d = a[j].d, b[j+1].k = k;
@@ -72,15 +71,13 @@ static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const c
 	b[n+1].d = a[n-1].d + 1;
 	b[n+1].k = a[n-1].k;
 
-	// out-of-bound cells
+	// drop out-of-bound cells
 	kv_resize(wf_diag_t, km, *A, n + 2);
-	A->n = 0, a = A->a;
-	for (j = 0; j < n + 2; ++j) {
-		wf_diag_t *p = &b[j];
-		int32_t i = p->d + p->k;
-		if (i >= ql || p->k >= tl || i < -1 || p->k < -1) continue;
-		a[A->n++] = *p;
-	}
+	a = A->a;
+	for (j = 0, m = 0; j < n + 2; ++j)
+		if (b[j].d + b[j].k < ql && b[j].k < tl)
+			a[m++] = b[j];
+	A->n = m;
 	return 0;
 }
 
@@ -94,7 +91,6 @@ int32_t wf_ed(void *km, int32_t tl, const char *ts, int32_t ql, const char *qs)
 		int32_t ret = wf_step(km, tl, ts, ql, qs, &A, &B);
 		if (ret) break;
 		++s;
-//		printf("[%s] s=%d, n=%ld\n", __func__, s, A.n);
 	}
 	kfree(km, A.a);
 	kfree(km, B.a);
