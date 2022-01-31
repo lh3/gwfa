@@ -45,7 +45,7 @@ static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const c
 	b[0].d = a[0].d - 1;
 	b[0].k = a[0].k + 1;
 	b[1].d = a[0].d;
-	b[1].k = (a[0].k > a[1].k? a[0].k : a[1].k) + 1;
+	b[1].k = (n == 1 || a[0].k > a[1].k? a[0].k : a[1].k) + 1;
 	for (j = 1; j < n - 1; ++j) {
 		int32_t k;
 		k = a[j-1].k;
