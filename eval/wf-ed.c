@@ -17,6 +17,18 @@ static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const c
 	wf_diag_t *a = A->a, *b;
 
 	// extend
+#if 0
+	for (j = 0; j < n; ++j) {
+		wf_diag_t *p = &a[j];
+		int32_t k = p->k;
+		int32_t max_k = (ql - p->d < tl? ql - p->d : tl) - 1;
+		const char *ts_ = ts + 1, *qs_ = qs + p->d + 1;
+		while (k < max_k && *(ts_ + k) == *(qs_ + k))
+			++k;
+		if (k + p->d == ql - 1) return 1; // found semi glocal
+		p->k = k;
+	}
+#else
 	for (j = 0; j < n; ++j) {
 		wf_diag_t *p = &a[j];
 		int32_t k = p->k, i = k + p->d;
@@ -25,6 +37,7 @@ static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const c
 		if (i == ql - 1) return 1; // found semi glocal
 		p->k = k;
 	}
+#endif
 
 	// next
 	kv_resize(wf_diag_t, km, *B, n + 2);
