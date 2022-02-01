@@ -4,11 +4,16 @@ CFLAGS=		-g -Wall -O2
 CXXFLAGS=	$(CFLAGS)
 CPPFLAGS=	-DGWF_DEBUG
 INCLUDES=
-PROG=		test-edlib test-wfa
+PROG=		test-wf-ed test-edlib test-wfa
 LIBS=		-lz -lpthread -lm
 
 EDLIB_ROOT=edlib
 WFA_ROOT=WFA
+
+ifneq ($(asan),)
+	CFLAGS+=-fsanitize=address
+	LIBS+=-fsanitize=address
+endif
 
 .SUFFIXES:.c .o
 .PHONY:all clean depend
@@ -32,6 +37,9 @@ test-wfa.o:test-wfa.c
 
 test-wfa:test-wfa.o
 		$(CXX) $(CXXFLAGS) -o $@ $< $(WFA_ROOT)/build/libwfa.a -lz
+
+test-wf-ed:wf-ed.c
+		$(CC) $(CFLAGS) -I.. -DWF_ED_MAIN -I$(WFA_ROOT) $^ -o $@ -lz
 
 clean:
 		rm -fr gmon.out *.o a.out $(PROG) *~ *.a *.dSYM
