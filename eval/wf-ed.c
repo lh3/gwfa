@@ -1,21 +1,14 @@
-#include <assert.h>
-#include <string.h>
-#include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
-#include "kalloc.h"
-#include "kvec.h"
 
 typedef struct {
 	int32_t d, k;
 } wf_diag_t;
 
-typedef kvec_t(wf_diag_t) wf_diag_v;
-
-static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const char *qs, wf_diag_v *A, wf_diag_v *B)
+static int32_t wf_step(int32_t tl, const char *ts, int32_t ql, const char *qs, int32_t n, wf_diag_t *a)
 {
-	int32_t j, n = A->n, m;
-	wf_diag_t *a = A->a, *b;
+	int32_t j, m;
+	wf_diag_t *b = a + n + 2;
 
 	// wfa_extend
 #if 0 // unoptimized original version
@@ -46,14 +39,12 @@ static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const c
 		else if (k + 7 >= max_k)
 			while (k < max_k && *(ts_ + k) == *(qs_ + k))
 				++k;
-		if (k + p->d == ql - 1) return 1; // found semi glocal
+		if (k + p->d == ql - 1) return -1; // found semi glocal
 		p->k = k;
 	}
 #endif
 
 	// wfa_next
-	kv_resize(wf_diag_t, km, *B, n + 2);
-	b = B->a, B->n = 0;
 	b[0].d = a[0].d - 1;
 	b[0].k = a[0].k + 1;
 	b[1].d = a[0].d;
@@ -72,33 +63,31 @@ static int32_t wf_step(void *km, int32_t tl, const char *ts, int32_t ql, const c
 	b[n+1].k = a[n-1].k;
 
 	// drop out-of-bound cells
-	kv_resize(wf_diag_t, km, *A, n + 2);
-	a = A->a;
 	for (j = 0, m = 0; j < n + 2; ++j)
 		if (b[j].d + b[j].k < ql && b[j].k < tl)
 			a[m++] = b[j];
-	A->n = m;
-	return 0;
+	return m;
 }
 
-int32_t wf_ed(void *km, int32_t tl, const char *ts, int32_t ql, const char *qs)
+// mem should be at least (tl+ql)*16 long
+int32_t wf_ed(int32_t tl, const char *ts, int32_t ql, const char *qs, uint8_t *mem)
 {
-	int32_t s = 0;
-	wf_diag_v A = {0,0,0}, B = {0,0,0};
-	kv_resize(wf_diag_t, km, A, 16);
-	A.a[A.n].d = 0, A.a[A.n++].k = -1;
+	int32_t s = 0, n = 1;
+	wf_diag_t *a;
+	a = (wf_diag_t*)mem;
+	a[0].d = 0, a[0].k = -1;
 	while (1) {
-		int32_t ret = wf_step(km, tl, ts, ql, qs, &A, &B);
-		if (ret) break;
+		n = wf_step(tl, ts, ql, qs, n, a);
+		if (n < 0) break;
 		++s;
 	}
-	kfree(km, A.a);
-	kfree(km, B.a);
 	return s;
 }
 
 #ifdef WF_ED_MAIN
+#include <assert.h>
 #include <zlib.h>
+#include <stdlib.h>
 #include "ketopt.h"
 #include "kseq.h"
 KSEQ_INIT(gzFile, gzread)
@@ -109,6 +98,7 @@ int main(int argc, char *argv[])
 	kseq_t *ks1, *ks2;
 	ketopt_t o = KETOPT_INIT;
 	int c, s;
+	uint8_t *mem;
 
 	while ((c = ketopt(&o, argc, argv, 1, "", 0)) >= 0) {
 	}
@@ -125,7 +115,9 @@ int main(int argc, char *argv[])
 	kseq_read(ks1);
 	kseq_read(ks2);
 
-	s = wf_ed(0, ks1->seq.l, ks1->seq.s, ks2->seq.l, ks2->seq.s);
+	mem = (uint8_t*)malloc((ks1->seq.l + ks2->seq.l) * 16);
+	s = wf_ed(ks1->seq.l, ks1->seq.s, ks2->seq.l, ks2->seq.s, mem);
+	free(mem);
 	printf("%s\t%s\t%d\n", ks1->name.s, ks2->name.s, s);
 
 	kseq_destroy(ks1);

@@ -38,7 +38,7 @@ test-wfa.o:test-wfa.c
 test-wfa:test-wfa.o
 		$(CXX) $(CXXFLAGS) -o $@ $< $(WFA_ROOT)/build/libwfa.a -lz
 
-test-wf-ed:wf-ed.c ../kalloc.c
+test-wf-ed:wf-ed.c
 		$(CC) $(CFLAGS) -I.. -DWF_ED_MAIN -I$(WFA_ROOT) $^ -o $@ -lz
 
 clean:
