@@ -8,7 +8,7 @@ typedef struct {
 static int32_t wf_step(int32_t tl, const char *ts, int32_t ql, const char *qs, int32_t n, wf_diag_t *a)
 {
 	int32_t j, m;
-	wf_diag_t *b = a + n + 2;
+	wf_diag_t *b = a + n + 2; // temporary array
 
 	// wfa_extend
 #if 0 // unoptimized original version
@@ -20,7 +20,7 @@ static int32_t wf_step(int32_t tl, const char *ts, int32_t ql, const char *qs, i
 		if (i == ql - 1) return 1; // found semi glocal
 		p->k = k;
 	}
-#else // optimized version learned WFA
+#else // optimized version learned from WFA
 	for (j = 0; j < n; ++j) {
 		wf_diag_t *p = &a[j];
 		int32_t k = p->k;
@@ -28,16 +28,16 @@ static int32_t wf_step(int32_t tl, const char *ts, int32_t ql, const char *qs, i
 		const char *ts_ = ts + 1, *qs_ = qs + p->d + 1;
 		uint64_t cmp = 0;
 		while (k + 7 < max_k) {
-			uint64_t x = *(uint64_t*)(ts_ + k);
+			uint64_t x = *(uint64_t*)(ts_ + k); // warning: unaligned memory access
 			uint64_t y = *(uint64_t*)(qs_ + k);
 			cmp = x ^ y;
 			if (cmp == 0) k += 8;
 			else break;
 		}
 		if (cmp)
-			k += __builtin_ctzl(cmp) >> 3;
+			k += __builtin_ctzl(cmp) >> 3; // on x86, this is done via the BSR instruction: https://www.felixcloutier.com/x86/bsr
 		else if (k + 7 >= max_k)
-			while (k < max_k && *(ts_ + k) == *(qs_ + k))
+			while (k < max_k && *(ts_ + k) == *(qs_ + k)) // use this for generic CPUs. It is slightly faster than the unoptimized version
 				++k;
 		if (k + p->d == ql - 1) return -1; // found semi glocal
 		p->k = k;
