@@ -281,6 +281,32 @@ static int32_t gwf_prune(int32_t n_a, gwf_diag_t *a, uint32_t max_lag)
 
 #define GWF_MIN_BATCH 8
 
+static inline int32_t gwf_extend1(int32_t d, int32_t k, int32_t vl, const char *ts, int32_t ql, const char *qs)
+{
+	int32_t max_k = (ql - d < vl? ql - d : vl) - 1;
+	const char *ts_ = ts + 1, *qs_ = qs + d + 1;
+#if 0
+	// int32_t i = k + d; while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1]) ++k, ++i;
+	while (k < max_k && *(ts_ + k) == *(qs_ + k))
+		++k;
+#else
+	uint64_t cmp = 0;
+	while (k + 7 < max_k) {
+		uint64_t x = *(uint64_t*)(ts_ + k); // warning: unaligned memory access
+		uint64_t y = *(uint64_t*)(qs_ + k);
+		cmp = x ^ y;
+		if (cmp == 0) k += 8;
+		else break;
+	}
+	if (cmp)
+		k += __builtin_ctzl(cmp) >> 3; // on x86, this is done via the BSR instruction: https://www.felixcloutier.com/x86/bsr
+	else if (k + 7 >= max_k)
+		while (k < max_k && *(ts_ + k) == *(qs_ + k)) // use this for generic CPUs. It is slightly faster than the unoptimized version
+			++k;
+#endif
+	return k;
+}
+
 static int32_t gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, const char *q, kdq_t(gwf_diag_t) *A, gwf_diag_v *B, gwf_intv_v *tmp_intv)
 {
 	int32_t j, n, m, v, vl;
@@ -299,32 +325,9 @@ static int32_t gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, c
 	vl = g->len[v];
 	ts = g->seq[v];
 
-	// extend
-	for (j = 0; j < n; ++j) {
-		gwf_diag_t *p = &a[j];
-		int32_t k = p->k, d = (int32_t)p->vd - GWF_DIAG_SHIFT;
-		int32_t max_k = (ql - d < vl? ql - d : vl) - 1;
-		const char *ts_ = ts + 1, *qs_ = q + d + 1;
-#if 0
-		while (k < max_k && *(ts_ + k) == *(qs_ + k))
-			++k;
-#else
-		uint64_t cmp = 0;
-		while (k + 7 < max_k) {
-			uint64_t x = *(uint64_t*)(ts_ + k); // warning: unaligned memory access
-			uint64_t y = *(uint64_t*)(qs_ + k);
-			cmp = x ^ y;
-			if (cmp == 0) k += 8;
-			else break;
-		}
-		if (cmp)
-			k += __builtin_ctzl(cmp) >> 3; // on x86, this is done via the BSR instruction: https://www.felixcloutier.com/x86/bsr
-		else if (k + 7 >= max_k)
-			while (k < max_k && *(ts_ + k) == *(qs_ + k)) // use this for generic CPUs. It is slightly faster than the unoptimized version
-				++k;
-#endif
-		p->k = k;
-	}
+	// wfa_extend
+	for (j = 0; j < n; ++j)
+		a[j].k = gwf_extend1((int32_t)a[j].vd - GWF_DIAG_SHIFT, a[j].k, vl, ts, ql, q);
 
 	// wfa_next
 	kv_resize(gwf_diag_t, km, *B, B->n + n + 2);
@@ -358,7 +361,7 @@ static int32_t gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, c
 		int32_t d = (int32_t)p->vd - GWF_DIAG_SHIFT;
 		if (d + p->k < ql && p->k < vl) {
 			b[m++] = *p;
-		} else {
+		} else if (p->k == vl) {
 			gwf_intv_t *q;
 			kv_pushp(gwf_intv_t, km, *tmp_intv, &q);
 			q->vd0 = gwf_gen_vd(v, d), q->vd1 = q->vd0 + 1;
@@ -392,22 +395,18 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 		gwf_diag_t t;
 		uint32_t x0;
 		int32_t ooo, v, d, k, i, vl;
+
 		if (gwf_ed_extend_batch(buf->km, g, ql, q, A, &B, &buf->tmp)) continue;
+
 		t = *kdq_shift(gwf_diag_t, A);
 		ooo = t.xo&1, v = t.vd >> 32; // vertex
 		d = (int32_t)t.vd - GWF_DIAG_SHIFT; // diagonal
 		k = t.k; // wavefront position on the vertex
 		vl = g->len[v]; // $vl is the vertex length
-		{ // extend the diagonal $d to the wavefront
-			// This block is equivalent to
-			//   i = k + d; while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1]) ++k, ++i;
-			int32_t max_k = (ql - d < vl? ql - d : vl) - 1;
-			const char *ts = g->seq[v] + 1, *qs = q + d + 1;
-			while (k < max_k && *(ts + k) == *(qs + k))
-				++k;
-		}
+		k = gwf_extend1(d, k, vl, g->seq[v], ql, q);
 		i = k + d; // query position
 		x0 = (t.xo >> 1) + ((k - t.k) << 1); // current anti diagonal
+
 		if (k + 1 < vl && i + 1 < ql) { // the most common case: the wavefront is in the middle
 			int32_t push1 = 1, push2 = 1;
 			if (B.n >= 2) push1 = gwf_diag_update(&B.a[B.n - 2], v, d-1, k+1, x0 + 1, ooo);
@@ -447,9 +446,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 				uint32_t w = (uint32_t)g->arc[ov + j];
 				gwf_diag_push(buf->km, &B, w, i, 0, x0 + 1, 1); // deleting the first base on the next vertex
 			}
-		} else {
-			assert(0); // should never come here
-		}
+		} else assert(0); // should never come here
 	}
 
 	kdq_destroy(gwf_diag_t, A);
