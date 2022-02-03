@@ -279,8 +279,6 @@ static int32_t gwf_prune(int32_t n_a, gwf_diag_t *a, uint32_t max_lag)
 	return j;
 }
 
-#define GWF_MIN_BATCH 8
-
 static inline int32_t gwf_extend1(int32_t d, int32_t k, int32_t vl, const char *ts, int32_t ql, const char *qs)
 {
 	int32_t max_k = (ql - d < vl? ql - d : vl) - 1;
@@ -317,7 +315,7 @@ static int32_t gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, c
 	for (n = 1; n < kdq_size(A); ++n)
 		if (kdq_at(A, n).vd != kdq_at(A, n - 1).vd + 1 || (kdq_at(A, n).xo&1))
 			break;
-	if (n < GWF_MIN_BATCH) return 0;
+	if (n < 4) return 0;
 	if (A->front + n > 1LL<<A->bits) return 0; // wrap around the end of kdq
 
 	a = &A->a[A->front];
