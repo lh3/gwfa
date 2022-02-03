@@ -354,7 +354,7 @@ static int32_t gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, c
 	for (j = 0; j < n; ++j) {
 		gwf_diag_t t = *kdq_shift(gwf_diag_t, A);
 		if (t.k == vl - 1 || (int32_t)t.vd - GWF_DIAG_SHIFT + t.k == ql - 1)
-			*kdq_pushp(gwf_diag_t, A) = t;
+			t.xo = 1, *kdq_pushp(gwf_diag_t, A) = t;
 	}
 	for (j = 0, m = 0; j < n + 2; ++j) {
 		gwf_diag_t *p = &b[j];
