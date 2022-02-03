@@ -48,9 +48,11 @@ void gwf_cleanup(void *km, gwf_graph_t *g)
 #include "kdq.h"
 #include "kvec.h"
 
+#define GWF_DIAG_SHIFT 0x40000000
+
 static inline uint64_t gwf_gen_vd(uint32_t v, int32_t d)
 {
-	return (uint64_t)v<<32 | (0x40000000 + d);
+	return (uint64_t)v<<32 | (GWF_DIAG_SHIFT + d);
 }
 
 /*
@@ -77,7 +79,7 @@ void gwf_ed_print_intv(size_t n, gwf_intv_t *a) // for debugging only
 {
 	size_t i;
 	for (i = 0; i < n; ++i)
-		printf("Z\t%d\t%d\t%d\n", (int32_t)(a[i].vd0>>32), (int32_t)a[i].vd0 - 0x40000000, (int32_t)a[i].vd1 - 0x40000000);
+		printf("Z\t%d\t%d\t%d\n", (int32_t)(a[i].vd0>>32), (int32_t)a[i].vd0 - GWF_DIAG_SHIFT, (int32_t)a[i].vd1 - GWF_DIAG_SHIFT);
 }
 
 // merge overlapping intervals; input must be sorted
@@ -131,7 +133,7 @@ void gwf_ed_print_diag(size_t n, gwf_diag_t *a) // for debugging only
 {
 	size_t i;
 	for (i = 0; i < n; ++i) {
-		int32_t d = (int32_t)a[i].vd - 0x40000000;
+		int32_t d = (int32_t)a[i].vd - GWF_DIAG_SHIFT;
 		printf("Z\t%d\t%d\t%d\t%d\n", (int32_t)(a[i].vd>>32), d, d + a[i].k, a[i].xo>>1);
 	}
 }
@@ -279,64 +281,91 @@ static int32_t gwf_prune(int32_t n_a, gwf_diag_t *a, uint32_t max_lag)
 
 #define GWF_MIN_BATCH 8
 
-static int32_t gwf_ed_extend_batch(gwf_edbug_t *buf, const gwf_graph_t *g, int32_t ql, const char *q, kdq_t(gwf_diag_t) *A, gwf_diag_v *B)
+static int32_t gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, const char *q, kdq_t(gwf_diag_t) *A, gwf_diag_v *B, gwf_intv_v *tmp_intv)
 {
-	uint32_t j, n, m;
-	int32_t v, vl, d0;
-	gwf_diag_t *p, *q, *a, *b;
+	int32_t j, n, m, v, vl;
+	gwf_diag_t *a, *b;
+	const char *ts;
 
 	if (kdq_at(A, 0).xo&1) return 0;
 	for (n = 1; n < kdq_size(A); ++n)
 		if (kdq_at(A, n).vd != kdq_at(A, n - 1).vd + 1 || (kdq_at(A, n).xo&1))
 			break;
 	if (n < GWF_MIN_BATCH) return 0;
-	if (A->front + n > 1LL<<A->bits) return 0; // wrap around kdq
+	if (A->front + n > 1LL<<A->bits) return 0; // wrap around the end of kdq
 
 	a = &A->a[A->front];
 	v = a->vd>>32;
 	vl = g->len[v];
-	d0 = (int32_t)a->vd - 0x40000000;
+	ts = g->seq[v];
 
 	// extend
 	for (j = 0; j < n; ++j) {
 		gwf_diag_t *p = &a[j];
-		int32_t d = d0 + j;
-		int32_t k = t.k; // wavefront position on the vertex
+		int32_t k = p->k, d = (int32_t)p->vd - GWF_DIAG_SHIFT;
 		int32_t max_k = (ql - d < vl? ql - d : vl) - 1;
-		const char *ts = g->seq[v] + 1, *qs = q + d + 1;
-		while (k < max_k && *(ts + k) == *(qs + k))
+		const char *ts_ = ts + 1, *qs_ = q + d + 1;
+#if 0
+		while (k < max_k && *(ts_ + k) == *(qs_ + k))
 			++k;
-		t.xo += (k - t.k) << 2;
-		t.k = k;
+#else
+		uint64_t cmp = 0;
+		while (k + 7 < max_k) {
+			uint64_t x = *(uint64_t*)(ts_ + k); // warning: unaligned memory access
+			uint64_t y = *(uint64_t*)(qs_ + k);
+			cmp = x ^ y;
+			if (cmp == 0) k += 8;
+			else break;
+		}
+		if (cmp)
+			k += __builtin_ctzl(cmp) >> 3; // on x86, this is done via the BSR instruction: https://www.felixcloutier.com/x86/bsr
+		else if (k + 7 >= max_k)
+			while (k < max_k && *(ts_ + k) == *(qs_ + k)) // use this for generic CPUs. It is slightly faster than the unoptimized version
+				++k;
+#endif
+		p->k = k;
 	}
 
-	// next
-	kv_resize(gwf_diag_t, buf->km, *B, B->n + n + 2);
+	// wfa_next
+	kv_resize(gwf_diag_t, km, *B, B->n + n + 2);
 	b = &B->a[B->n];
 	memset(b, 0, (n + 2) * sizeof(*b));
-	
 	b[0].vd = a[0].vd - 1;
 	b[0].k = a[0].k + 1;
 	b[1].vd = a[0].vd;
-	b[1].k = (a[0].k > a[1].k? a[0].k : a[1].k) + 1;
+	b[1].k = (n == 1 || a[0].k > a[1].k? a[0].k : a[1].k) + 1;
 	for (j = 1; j < n - 1; ++j) {
-		gwf_diag_t *q;
-		int32_t k;
-		k = a[j-1].k;
+		int32_t k = a[j-1].k;
 		k = k > a[j+1].k + 1? k : a[j+1].k + 1;
 		k = k > a[j].k + 1? k : a[j].k + 1;
 		b[j+1].vd = a[j].vd, b[j+1].k = k;
 	}
-	b[n].vd = a[n].vd;
-	b[n].k = a[n-1].k > a[n].k + 1? a[n-1].k : a[n].k + 1;
-	b[n+1].vd = a[n].vd + 1;
-	b[n+1].k = a[n].k;
+	if (n >= 2) {
+		b[n].vd = a[n-1].vd;
+		b[n].k = a[n-2].k > a[n-1].k + 1? a[n-2].k : a[n-1].k + 1;
+	}
+	b[n+1].vd = a[n-1].vd + 1;
+	b[n+1].k = a[n-1].k;
 
 	// drop out-of-bound cells
-	for (j = 0; j < n + 2; ++j) {
+	for (j = 0; j < n; ++j) {
+		gwf_diag_t t = *kdq_shift(gwf_diag_t, A);
+		if (t.k == vl - 1 || (int32_t)t.vd - GWF_DIAG_SHIFT + t.k == ql - 1)
+			*kdq_pushp(gwf_diag_t, A) = t;
 	}
-
-	B->n += n + 2;
+	for (j = 0, m = 0; j < n + 2; ++j) {
+		gwf_diag_t *p = &b[j];
+		int32_t d = (int32_t)p->vd - GWF_DIAG_SHIFT;
+		if (d + p->k < ql && p->k < vl) {
+			b[m++] = *p;
+		} else {
+			gwf_intv_t *q;
+			kv_pushp(gwf_intv_t, km, *tmp_intv, &q);
+			q->vd0 = gwf_gen_vd(v, d), q->vd1 = q->vd0 + 1;
+		}
+	}
+	B->n += m;
+	return 1;
 }
 
 static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v1, uint32_t max_lag,
@@ -360,11 +389,15 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	gwf_set64_clear(buf->h); // hash table $h to avoid visiting a vertex twice
 	buf->tmp.n = 0;
 	while (kdq_size(A)) {
-		gwf_diag_t t = *kdq_shift(gwf_diag_t, A);
-		uint32_t x0, ooo = t.xo&1, v = t.vd >> 32; // vertex
-		int32_t d = (int32_t)t.vd - 0x40000000; // diagonal
-		int32_t k = t.k; // wavefront position on the vertex
-		int32_t i, vl = g->len[v]; // $vl is the vertex length
+		gwf_diag_t t;
+		uint32_t x0;
+		int32_t ooo, v, d, k, i, vl;
+		if (gwf_ed_extend_batch(buf->km, g, ql, q, A, &B, &buf->tmp)) continue;
+		t = *kdq_shift(gwf_diag_t, A);
+		ooo = t.xo&1, v = t.vd >> 32; // vertex
+		d = (int32_t)t.vd - GWF_DIAG_SHIFT; // diagonal
+		k = t.k; // wavefront position on the vertex
+		vl = g->len[v]; // $vl is the vertex length
 		{ // extend the diagonal $d to the wavefront
 			// This block is equivalent to
 			//   i = k + d; while (k + 1 < g->len[v] && i + 1 < ql && g->seq[v][k+1] == q[i+1]) ++k, ++i;
