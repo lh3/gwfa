@@ -362,7 +362,7 @@ static void gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, cons
 static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v1, uint32_t max_lag,
 								 int32_t *end_v, int32_t *end_off, int32_t *n_a_, gwf_diag_t *a)
 {
-	int32_t i, x, st, n = *n_a_;
+	int32_t i, x, n = *n_a_, do_dedup = 1;
 	kdq_t(gwf_diag_t) *A;
 	gwf_diag_v B = {0,0,0};
 	gwf_diag_t *b;
@@ -379,12 +379,13 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	A->count = n;
 	memcpy(A->a, a, n * sizeof(*a));
 #else
-	for (st = 0, i = 1; i <= n; ++i) {
+	for (x = 0, i = 1; i <= n; ++i) {
 		if (i == n || a[i].vd != a[i-1].vd + 1) {
-			gwf_ed_extend_batch(buf->km, g, ql, q, i - st, &a[st], &B, A, &buf->tmp);
-			st = i;
+			gwf_ed_extend_batch(buf->km, g, ql, q, i - x, &a[x], &B, A, &buf->tmp);
+			x = i;
 		}
 	}
+	if (kdq_size(A) == 0) do_dedup = 0;
 #endif
 	kfree(buf->km, a); // $a is not used as it has been copied to $A
 
@@ -445,9 +446,9 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	}
 
 	kdq_destroy(gwf_diag_t, A);
-	n = B.n, b = B.a;
+	*n_a_ = n = B.n, b = B.a;
 
-	*n_a_ = n = gwf_dedup(buf, n, b);
+	if (do_dedup) *n_a_ = n = gwf_dedup(buf, n, b);
 	if (max_lag > 0) *n_a_ = n = gwf_prune(n, b, max_lag);
 	return b;
 }
