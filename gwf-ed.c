@@ -305,23 +305,14 @@ static inline int32_t gwf_extend1(int32_t d, int32_t k, int32_t vl, const char *
 	return k;
 }
 
-static int32_t gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, const char *q, kdq_t(gwf_diag_t) *A, gwf_diag_v *B, gwf_intv_v *tmp_intv)
+static void gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_t n, gwf_diag_t *a, gwf_diag_v *B,
+								kdq_t(gwf_diag_t) *A, gwf_intv_v *tmp_intv)
 {
-	int32_t j, n, m, v, vl;
-	gwf_diag_t *a, *b;
-	const char *ts;
-
-	if (kdq_at(A, 0).xo&1) return 0;
-	for (n = 1; n < kdq_size(A); ++n)
-		if (kdq_at(A, n).vd != kdq_at(A, n - 1).vd + 1 || (kdq_at(A, n).xo&1))
-			break;
-	if (n < 4) return 0;
-	if (A->front + n > 1LL<<A->bits) return 0; // wrap around the end of kdq
-
-	a = &A->a[A->front];
-	v = a->vd>>32;
-	vl = g->len[v];
-	ts = g->seq[v];
+	int32_t j, m;
+	int32_t v = a->vd>>32;
+	int32_t vl = g->len[v];
+	const char *ts = g->seq[v];
+	gwf_diag_t *b;
 
 	// wfa_extend
 	for (j = 0; j < n; ++j)
@@ -350,9 +341,9 @@ static int32_t gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, c
 
 	// drop out-of-bound cells
 	for (j = 0; j < n; ++j) {
-		gwf_diag_t t = *kdq_shift(gwf_diag_t, A);
-		if (t.k == vl - 1 || (int32_t)t.vd - GWF_DIAG_SHIFT + t.k == ql - 1)
-			t.xo = 1, *kdq_pushp(gwf_diag_t, A) = t;
+		gwf_diag_t *p = &a[j];
+		if (p->k == vl - 1 || (int32_t)p->vd - GWF_DIAG_SHIFT + p->k == ql - 1)
+			p->xo = 1, *kdq_pushp(gwf_diag_t, A) = *p;
 	}
 	for (j = 0, m = 0; j < n + 2; ++j) {
 		gwf_diag_t *p = &b[j];
@@ -366,35 +357,41 @@ static int32_t gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, c
 		}
 	}
 	B->n += m;
-	return 1;
 }
 
 static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v1, uint32_t max_lag,
 								 int32_t *end_v, int32_t *end_off, int32_t *n_a_, gwf_diag_t *a)
 {
-	int32_t i, x, n = *n_a_;
+	int32_t i, x, st, n = *n_a_;
 	kdq_t(gwf_diag_t) *A;
 	gwf_diag_v B = {0,0,0};
 	gwf_diag_t *b;
 
 	*end_v = -1, *end_off = -1;
+	buf->tmp.n = 0;
+	gwf_set64_clear(buf->h); // hash table $h to avoid visiting a vertex twice
 	for (i = 0, x = 1; i < 32; ++i, x <<= 1)
 		if (x >= n) break;
 	if (i < 4) i = 4;
 	A = kdq_init2(gwf_diag_t, buf->km, i); // $A is a queue
+	kv_resize(gwf_diag_t, buf->km, B, n * 2);
+#if 0
 	A->count = n;
 	memcpy(A->a, a, n * sizeof(*a));
+#else
+	for (st = 0, i = 1; i <= n; ++i) {
+		if (i == n || a[i].vd != a[i-1].vd + 1) {
+			gwf_ed_extend_batch(buf->km, g, ql, q, i - st, &a[st], &B, A, &buf->tmp);
+			st = i;
+		}
+	}
+#endif
 	kfree(buf->km, a); // $a is not used as it has been copied to $A
 
-	kv_resize(gwf_diag_t, buf->km, B, n * 2);
-	gwf_set64_clear(buf->h); // hash table $h to avoid visiting a vertex twice
-	buf->tmp.n = 0;
 	while (kdq_size(A)) {
 		gwf_diag_t t;
 		uint32_t x0;
 		int32_t ooo, v, d, k, i, vl;
-
-		if (gwf_ed_extend_batch(buf->km, g, ql, q, A, &B, &buf->tmp)) continue;
 
 		t = *kdq_shift(gwf_diag_t, A);
 		ooo = t.xo&1, v = t.vd >> 32; // vertex
