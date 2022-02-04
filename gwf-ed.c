@@ -134,7 +134,7 @@ void gwf_ed_print_diag(size_t n, gwf_diag_t *a) // for debugging only
 	size_t i;
 	for (i = 0; i < n; ++i) {
 		int32_t d = (int32_t)a[i].vd - GWF_DIAG_SHIFT;
-		printf("Z\t%d\t%d\t%d\t%d\n", (int32_t)(a[i].vd>>32), d, d + a[i].k, a[i].xo>>1);
+		printf("Z\t%d\t%d\t%d\t%d\t%d\n", (int32_t)(a[i].vd>>32), d, a[i].k, d + a[i].k, a[i].xo>>1);
 	}
 }
 
@@ -158,7 +158,8 @@ static inline int32_t gwf_diag_update(gwf_diag_t *p, uint32_t v, int32_t d, int3
 {
 	uint64_t vd = gwf_gen_vd(v, d);
 	if (p->vd == vd) {
-		p->k = p->k > k? p->k : k, p->xo = x<<1|ooo;
+		p->xo = p->k > k? p->xo : x<<1|ooo;
+		p->k = p->k > k? p->k : k;
 		return 0;
 	}
 	return 1;
@@ -315,8 +316,12 @@ static void gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, cons
 	gwf_diag_t *b;
 
 	// wfa_extend
-	for (j = 0; j < n; ++j)
-		a[j].k = gwf_extend1((int32_t)a[j].vd - GWF_DIAG_SHIFT, a[j].k, vl, ts, ql, q);
+	for (j = 0; j < n; ++j) {
+		int32_t k;
+		k = gwf_extend1((int32_t)a[j].vd - GWF_DIAG_SHIFT, a[j].k, vl, ts, ql, q);
+		a[j].xo += (k - a[j].k) << 2;
+		a[j].k = k;
+	}
 
 	// wfa_next
 	kv_resize(gwf_diag_t, km, *B, B->n + n + 2);
@@ -324,26 +329,33 @@ static void gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, cons
 	memset(b, 0, (n + 2) * sizeof(*b));
 	b[0].vd = a[0].vd - 1;
 	b[0].k = a[0].k + 1;
+	b[0].xo = a[0].xo + 2; // 2 == 1<<1
 	b[1].vd = a[0].vd;
 	b[1].k = (n == 1 || a[0].k > a[1].k? a[0].k : a[1].k) + 1;
+	b[1].xo = n == 1 || a[0].k > a[1].k? a[0].xo + 4 : a[1].xo + 2;
 	for (j = 1; j < n - 1; ++j) {
+		uint32_t x = a[j-1].xo + 2;
 		int32_t k = a[j-1].k;
-		k = k > a[j+1].k + 1? k : a[j+1].k + 1;
+		x = k > a[j].k + 1? x : a[j].xo + 4;
 		k = k > a[j].k + 1? k : a[j].k + 1;
-		b[j+1].vd = a[j].vd, b[j+1].k = k;
+		x = k > a[j+1].k + 1? x : a[j+1].xo + 2;
+		k = k > a[j+1].k + 1? k : a[j+1].k + 1;
+		b[j+1].vd = a[j].vd, b[j+1].k = k, b[j+1].xo = x;
 	}
 	if (n >= 2) {
 		b[n].vd = a[n-1].vd;
 		b[n].k = a[n-2].k > a[n-1].k + 1? a[n-2].k : a[n-1].k + 1;
+		b[n].xo = a[n-2].k > a[n-1].k + 1? a[n-2].xo + 2 : a[n-1].xo + 4;
 	}
 	b[n+1].vd = a[n-1].vd + 1;
 	b[n+1].k = a[n-1].k;
+	b[n+1].xo = a[n-1].xo + 2;
 
 	// drop out-of-bound cells
 	for (j = 0; j < n; ++j) {
 		gwf_diag_t *p = &a[j];
 		if (p->k == vl - 1 || (int32_t)p->vd - GWF_DIAG_SHIFT + p->k == ql - 1)
-			p->xo = 1, *kdq_pushp(gwf_diag_t, A) = *p;
+			p->xo |= 1, *kdq_pushp(gwf_diag_t, A) = *p;
 	}
 	for (j = 0, m = 0; j < n + 2; ++j) {
 		gwf_diag_t *p = &b[j];
