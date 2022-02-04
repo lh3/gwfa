@@ -146,13 +146,6 @@ static inline void gwf_diag_push(void *km, gwf_diag_v *a, uint32_t v, int32_t d,
 	p->vd = gwf_gen_vd(v, d), p->k = k, p->xo = x<<1|ooo;
 }
 
-static inline void gwf_diag_push_queue(kdq_t(gwf_diag_t) *a, uint32_t v, int32_t d, int32_t k, uint32_t x, uint32_t ooo)
-{
-	gwf_diag_t *p;
-	p = kdq_pushp(gwf_diag_t, a);
-	p->vd = gwf_gen_vd(v, d), p->k = k, p->xo = x<<1|ooo;
-}
-
 // determine the wavefront on diagonal (v,d)
 static inline int32_t gwf_diag_update(gwf_diag_t *p, uint32_t v, int32_t d, int32_t k, uint32_t x, uint32_t ooo)
 {
@@ -267,6 +260,7 @@ static int32_t gwf_dedup(gwf_edbuf_t *buf, int32_t n_a, gwf_diag_t *a)
 	return n_a;
 }
 
+// remove diagonals that lag far behind the furthest wavefront
 static int32_t gwf_prune(int32_t n_a, gwf_diag_t *a, uint32_t max_lag)
 {
 	int32_t i, j;
@@ -280,6 +274,7 @@ static int32_t gwf_prune(int32_t n_a, gwf_diag_t *a, uint32_t max_lag)
 	return j;
 }
 
+// reach the wavefront
 static inline int32_t gwf_extend1(int32_t d, int32_t k, int32_t vl, const char *ts, int32_t ql, const char *qs)
 {
 	int32_t max_k = (ql - d < vl? ql - d : vl) - 1;
@@ -306,6 +301,7 @@ static inline int32_t gwf_extend1(int32_t d, int32_t k, int32_t vl, const char *
 	return k;
 }
 
+// This is essentially Landau-Vishkin for linear sequences. The function speeds up alignment to long vertices. Not really necessary.
 static void gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_t n, gwf_diag_t *a, gwf_diag_v *B,
 								kdq_t(gwf_diag_t) *A, gwf_intv_v *tmp_intv)
 {
@@ -370,6 +366,7 @@ static void gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, cons
 	B->n += m;
 }
 
+// wfa_extend and wfa_next combined
 static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v1, uint32_t max_lag,
 								 int32_t *end_v, int32_t *end_off, int32_t *n_a_, gwf_diag_t *a)
 {
@@ -386,10 +383,10 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	if (i < 4) i = 4;
 	A = kdq_init2(gwf_diag_t, buf->km, i); // $A is a queue
 	kv_resize(gwf_diag_t, buf->km, B, n * 2);
-#if 0
+#if 0 // unoptimized version without calling gwf_ed_extend_batch() at all. The final result will be the same.
 	A->count = n;
 	memcpy(A->a, a, n * sizeof(*a));
-#else
+#else // optimized for long vertices.
 	for (x = 0, i = 1; i <= n; ++i) {
 		if (i == n || a[i].vd != a[i-1].vd + 1) {
 			gwf_ed_extend_batch(buf->km, g, ql, q, i - x, &a[x], &B, A, &buf->tmp);
@@ -432,7 +429,11 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 				gwf_set64_put(buf->h, (uint64_t)w<<32 | (i + 1), &absent); // test if ($w,$i) has been visited
 				if (q[i + 1] == g->seq[w][0]) { // can be extended to the next vertex without a mismatch
 					++n_ext;
-					if (absent) gwf_diag_push_queue(A, w, i+1, 0, x0 + 2, 1);
+					if (absent) {
+						gwf_diag_t *p;
+						p = kdq_pushp(gwf_diag_t, A);
+						p->vd = gwf_gen_vd(w, i+1), p->k = 0, p->xo = (x0+2)<<1 | 1;
+					}
 				} else if (absent) {
 					gwf_diag_push(buf->km, &B, w, i,   0, x0 + 1, 1);
 					gwf_diag_push(buf->km, &B, w, i+1, 0, x0 + 2, 1);
