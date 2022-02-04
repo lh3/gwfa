@@ -326,7 +326,6 @@ static void gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, cons
 	// wfa_next
 	kv_resize(gwf_diag_t, km, *B, B->n + n + 2);
 	b = &B->a[B->n];
-	memset(b, 0, (n + 2) * sizeof(*b));
 	b[0].vd = a[0].vd - 1;
 	b[0].k = a[0].k + 1;
 	b[0].xo = a[0].xo + 2; // 2 == 1<<1
