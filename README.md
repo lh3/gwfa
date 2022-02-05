@@ -14,8 +14,9 @@ presents a _proof-of-concept_ implementation of GWFA that computes the edit
 distance between a graph and a sequence without backtracing. The algorithm
 assumes the start of the sequence to be aligned with the start of the first
 segment in the graph and requires the query sequence to be fully aligned. This
-behavior is similar to the SHW mode of [edlib][edlib]. It is not intended for
-mapping reads against a whole-genome graph. This is not an enduser tool.
+behavior is similar to the SHW mode of [edlib][edlib]. It does not support
+semi-global alignment and is thus not intended for read mapping. This is not an
+enduser tool.
 
 GWFA is optimized for graphs consisting of long segments. It is largely reduced
 to [my implementation][mylv89] of the [Landau-Vishkin algorithm][lv89] given
