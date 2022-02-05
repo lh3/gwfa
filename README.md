@@ -13,17 +13,21 @@ sequence graph. It adapts the [WFA algorithm][wfa] for graphs. This repo
 presents a _proof-of-concept_ implementation of GWFA that computes the edit
 distance between a graph and a sequence without backtracing. The algorithm
 assumes the start of the sequence to be aligned with the start of the first
-segment in the graph, similar to the SHW mode of [edlib][edlib]. It is _not_
-intended for mapping reads against a whole-genome graph.
+segment in the graph and requires the query sequence to be fully aligned. This
+behavior is similar to the SHW mode of [edlib][edlib]. It is not intended for
+mapping reads against a whole-genome graph. This is not an enduser tool.
 
 GWFA is optimized for graphs consisting of long segments. It is largely reduced
 to [my implementation][mylv89] of the [Landau-Vishkin algorithm][lv89] given
-two linear sequences.
+two linear sequences as input. Similar to WFA, GWFA is fast when the edit
+distance is small. It can align a ~120kb sequence to a ~160kb graph at 0.1%
+divergence in 0.02 second, much faster than the ordinary Needleman-Wunsch
+formulation.
 
 ## Evaluation
 
 To evaluate the performance of GWFA, we constructed two small graphs with
-minigraph. The first graph includes ~100kb region around C4A and C4B genes.
+minigraph. The first graph includes ~120kb region around the C4A and C4B genes.
 The second includes ~5Mb of HLA, consisting of 980 segments and 1399 links.
 Both graphs are available [via Zenodo][zenodo]. Neither has cycles.
 
