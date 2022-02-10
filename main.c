@@ -63,22 +63,24 @@ int main_ed_graph(int argc, char *argv[])
 	ketopt_t o = KETOPT_INIT;
 	gfa_t *gfa;
 	gwf_graph_t *g;
-	int c, print_graph = 0;
+	int c, print_graph = 0, traceback = 0;
 	uint32_t v0 = 0<<1|0; // first segment, forward strand
 	uint32_t max_lag = 0;
 	void *km = 0;
 	char *sname = 0;
 
-	while ((c = ketopt(&o, argc, argv, 1, "pl:s:", 0)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "ptl:s:", 0)) >= 0) {
 		if (c == 'p') print_graph = 1;
 		else if (c == 'l') max_lag = atoi(o.arg);
 		else if (c == 's') sname = o.arg;
+		else if (c == 't') traceback = 1;
 	}
 	if (argc - o.ind < 2) {
 		fprintf(stderr, "Usage: gwf-test [options] <target.gfa|fa> <query.fa>\n");
 		fprintf(stderr, "Options:\n");
 		fprintf(stderr, "  -l INT    max lag behind the furthest wavefront; 0 to disable [0]\n");
 		fprintf(stderr, "  -s STR    starting segment name [first]\n");
+		fprintf(stderr, "  -t        report the alignment path\n");
 		return 1;
 	}
 
@@ -103,7 +105,7 @@ int main_ed_graph(int argc, char *argv[])
 	ks = kseq_init(fp);
 	while (kseq_read(ks) >= 0) {
 		int32_t s;
-		s = gwf_ed(km, g, ks->seq.l, ks->seq.s, 0, -1, max_lag);
+		s = gwf_ed(km, g, ks->seq.l, ks->seq.s, 0, -1, max_lag, traceback);
 		printf("%s\t%d\n", ks->name.s, s);
 	}
 	kseq_destroy(ks);
@@ -153,7 +155,7 @@ int main_test(int argc, char *argv[])
 		g->len[v] = strlen(g->seq[v]);
 
 	gwf_ed_index(km, g);
-	s = gwf_ed(km, g, ql, q, v0, v1, 0);
+	s = gwf_ed(km, g, ql, q, v0, v1, 0, 0);
 
 	printf("%d\n", s);
 

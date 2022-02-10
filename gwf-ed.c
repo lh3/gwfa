@@ -120,6 +120,7 @@ typedef struct { // a diagonal
 	uint64_t vd; // higher 32 bits: vertex ID; lower 32 bits: diagonal+0x4000000
 	int32_t k;
 	uint32_t xo; // higher 31 bits: anti diagonal; lower 1 bit: out-of-order or not
+	int32_t t;
 } gwf_diag_t;
 
 typedef kvec_t(gwf_diag_t) gwf_diag_v;
@@ -139,20 +140,21 @@ void gwf_ed_print_diag(size_t n, gwf_diag_t *a) // for debugging only
 }
 
 // push (v,d,k) to the end of the queue
-static inline void gwf_diag_push(void *km, gwf_diag_v *a, uint32_t v, int32_t d, int32_t k, uint32_t x, uint32_t ooo)
+static inline void gwf_diag_push(void *km, gwf_diag_v *a, uint32_t v, int32_t d, int32_t k, uint32_t x, uint32_t ooo, int32_t t)
 {
 	gwf_diag_t *p;
 	kv_pushp(gwf_diag_t, km, *a, &p);
-	p->vd = gwf_gen_vd(v, d), p->k = k, p->xo = x<<1|ooo;
+	p->vd = gwf_gen_vd(v, d), p->k = k, p->xo = x<<1|ooo, p->t = t;
 }
 
 // determine the wavefront on diagonal (v,d)
-static inline int32_t gwf_diag_update(gwf_diag_t *p, uint32_t v, int32_t d, int32_t k, uint32_t x, uint32_t ooo)
+static inline int32_t gwf_diag_update(gwf_diag_t *p, uint32_t v, int32_t d, int32_t k, uint32_t x, uint32_t ooo, int32_t t)
 {
 	uint64_t vd = gwf_gen_vd(v, d);
 	if (p->vd == vd) {
 		p->xo = p->k > k? p->xo : x<<1|ooo;
-		p->k = p->k > k? p->k : k;
+		p->t  = p->k > k? p->t : t;
+		p->k  = p->k > k? p->k : k;
 		return 0;
 	}
 	return 1;
@@ -227,6 +229,24 @@ static int32_t gwf_mixed_dedup(int32_t n_a, gwf_diag_t *a, int32_t n_b, gwf_intv
 }
 
 /*
+ *
+ */
+typedef struct {
+	int32_t v;
+	int32_t pre;
+} gwf_trace_t;
+
+typedef kvec_t(gwf_trace_t) gwf_trace_v;
+
+static int32_t gwf_trace_push(void *km, gwf_trace_v *a, int32_t v, int32_t pre)
+{
+	gwf_trace_t *p;
+	kv_pushp(gwf_trace_t, km, *a, &p);
+	p->v = v, p->pre = pre;
+	return a->n - 1;
+}
+
+/*
  * Core GWFA routine
  */
 KHASHL_INIT(KH_LOCAL, gwf_set64_t, gwf_set64, uint64_t, kh_hash_dummy, kh_eq_generic)
@@ -237,6 +257,7 @@ typedef struct {
 	gwf_intv_v intv;
 	gwf_intv_v tmp, swap;
 	gwf_diag_v ooo;
+	gwf_trace_v t;
 } gwf_edbuf_t;
 
 // remove diagonals not on the wavefront
@@ -323,28 +344,34 @@ static void gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, cons
 	kv_resize(gwf_diag_t, km, *B, B->n + n + 2);
 	b = &B->a[B->n];
 	b[0].vd = a[0].vd - 1;
-	b[0].k = a[0].k + 1;
 	b[0].xo = a[0].xo + 2; // 2 == 1<<1
+	b[0].k = a[0].k + 1;
+	b[0].t = a[0].t;
 	b[1].vd = a[0].vd;
-	b[1].k = (n == 1 || a[0].k > a[1].k? a[0].k : a[1].k) + 1;
-	b[1].xo = n == 1 || a[0].k > a[1].k? a[0].xo + 4 : a[1].xo + 2;
+	b[1].xo =  n == 1 || a[0].k > a[1].k? a[0].xo + 4 : a[1].xo + 2;
+	b[1].t  =  n == 1 || a[0].k > a[1].k? a[0].t : a[1].t;
+	b[1].k  = (n == 1 || a[0].k > a[1].k? a[0].k : a[1].k) + 1;
 	for (j = 1; j < n - 1; ++j) {
 		uint32_t x = a[j-1].xo + 2;
-		int32_t k = a[j-1].k;
+		int32_t k = a[j-1].k, t = a[j-1].t;
 		x = k > a[j].k + 1? x : a[j].xo + 4;
+		t = k > a[j].k + 1? t : a[j].t;
 		k = k > a[j].k + 1? k : a[j].k + 1;
 		x = k > a[j+1].k + 1? x : a[j+1].xo + 2;
+		t = k > a[j+1].k + 1? t : a[j+1].t;
 		k = k > a[j+1].k + 1? k : a[j+1].k + 1;
-		b[j+1].vd = a[j].vd, b[j+1].k = k, b[j+1].xo = x;
+		b[j+1].vd = a[j].vd, b[j+1].k = k, b[j+1].xo = x, b[j+1].t = t;
 	}
 	if (n >= 2) {
 		b[n].vd = a[n-1].vd;
-		b[n].k = a[n-2].k > a[n-1].k + 1? a[n-2].k : a[n-1].k + 1;
 		b[n].xo = a[n-2].k > a[n-1].k + 1? a[n-2].xo + 2 : a[n-1].xo + 4;
+		b[n].t  = a[n-2].k > a[n-1].k + 1? a[n-2].t : a[n-1].t;
+		b[n].k  = a[n-2].k > a[n-1].k + 1? a[n-2].k : a[n-1].k + 1;
 	}
 	b[n+1].vd = a[n-1].vd + 1;
-	b[n+1].k = a[n-1].k;
 	b[n+1].xo = a[n-1].xo + 2;
+	b[n+1].t  = a[n-1].t;
+	b[n+1].k  = a[n-1].k;
 
 	// drop out-of-bound cells
 	for (j = 0; j < n; ++j) {
@@ -367,7 +394,7 @@ static void gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, cons
 }
 
 // wfa_extend and wfa_next combined
-static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v1, uint32_t max_lag,
+static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v1, uint32_t max_lag, int32_t traceback,
 								 int32_t *end_v, int32_t *end_off, int32_t *n_a_, gwf_diag_t *a)
 {
 	int32_t i, x, n = *n_a_, do_dedup = 1;
@@ -413,11 +440,11 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 
 		if (k + 1 < vl && i + 1 < ql) { // the most common case: the wavefront is in the middle
 			int32_t push1 = 1, push2 = 1;
-			if (B.n >= 2) push1 = gwf_diag_update(&B.a[B.n - 2], v, d-1, k+1, x0 + 1, ooo);
-			if (B.n >= 1) push2 = gwf_diag_update(&B.a[B.n - 1], v, d,   k+1, x0 + 2, ooo);
-			if (push1)          gwf_diag_push(buf->km, &B, v, d-1, k+1, x0 + 1, 1);
-			if (push2 || push1) gwf_diag_push(buf->km, &B, v, d,   k+1, x0 + 2, 1);
-			gwf_diag_push(buf->km, &B, v, d+1, k, x0 + 1, ooo);
+			if (B.n >= 2) push1 = gwf_diag_update(&B.a[B.n - 2], v, d-1, k+1, x0 + 1, ooo, t.t);
+			if (B.n >= 1) push2 = gwf_diag_update(&B.a[B.n - 1], v, d,   k+1, x0 + 2, ooo, t.t);
+			if (push1)          gwf_diag_push(buf->km, &B, v, d-1, k+1, x0 + 1, 1, t.t);
+			if (push2 || push1) gwf_diag_push(buf->km, &B, v, d,   k+1, x0 + 2, 1, t.t);
+			gwf_diag_push(buf->km, &B, v, d+1, k, x0 + 1, ooo, t.t);
 		} else if (i + 1 < ql) { // k + 1 == g->len[v]; reaching the end of the vertex but not the end of query
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j, n_ext = 0;
 			gwf_intv_t *p;
@@ -425,34 +452,37 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 			p->vd0 = gwf_gen_vd(v, d), p->vd1 = p->vd0 + 1;
 			for (j = 0; j < nv; ++j) { // traverse $v's neighbors
 				uint32_t w = (uint32_t)g->arc[ov + j]; // $w is next to $v
-				int absent;
+				int absent, tw = -1;
 				gwf_set64_put(buf->h, (uint64_t)w<<32 | (i + 1), &absent); // test if ($w,$i) has been visited
+				if (absent && traceback) tw = gwf_trace_push(buf->km, &buf->t, w, t.t);
 				if (q[i + 1] == g->seq[w][0]) { // can be extended to the next vertex without a mismatch
 					++n_ext;
 					if (absent) {
 						gwf_diag_t *p;
 						p = kdq_pushp(gwf_diag_t, A);
-						p->vd = gwf_gen_vd(w, i+1), p->k = 0, p->xo = (x0+2)<<1 | 1;
+						p->vd = gwf_gen_vd(w, i+1), p->k = 0, p->xo = (x0+2)<<1 | 1, p->t = tw;
 					}
 				} else if (absent) {
-					gwf_diag_push(buf->km, &B, w, i,   0, x0 + 1, 1);
-					gwf_diag_push(buf->km, &B, w, i+1, 0, x0 + 2, 1);
+					gwf_diag_push(buf->km, &B, w, i,   0, x0 + 1, 1, tw);
+					gwf_diag_push(buf->km, &B, w, i+1, 0, x0 + 2, 1, tw);
 				}
 			}
 			if (nv == 0 || n_ext != nv) // add an insertion to the target; this *might* cause a duplicate in corner cases
-				gwf_diag_push(buf->km, &B, v, d+1, k, x0 + 1, 1);
+				gwf_diag_push(buf->km, &B, v, d+1, k, x0 + 1, 1, t.t);
 		} else if (v1 < 0 || (v == v1 && k + 1 == vl)) { // i + 1 == ql
 			*end_v = v, *end_off = k, *n_a_ = 0;
 			kdq_destroy(gwf_diag_t, A);
 			kfree(buf->km, B.a);
 			return 0;
 		} else if (k + 1 < vl) { // i + 1 == ql; reaching the end of the query but not the end of the vertex
-			gwf_diag_push(buf->km, &B, v, d-1, k+1, x0 + 1, ooo); // add an deletion; this *might* case a duplicate in corner cases
+			gwf_diag_push(buf->km, &B, v, d-1, k+1, x0 + 1, ooo, t.t); // add an deletion; this *might* case a duplicate in corner cases
 		} else if (v != v1) { // i + 1 == ql && k + 1 == g->len[v]; not reaching the last vertex $v1
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j;
 			for (j = 0; j < nv; ++j) {
 				uint32_t w = (uint32_t)g->arc[ov + j];
-				gwf_diag_push(buf->km, &B, w, i, 0, x0 + 1, 1); // deleting the first base on the next vertex
+				int32_t tw = -1;
+				if (traceback) tw = gwf_trace_push(buf->km, &buf->t, w, t.t);
+				gwf_diag_push(buf->km, &B, w, i, 0, x0 + 1, 1, tw); // deleting the first base on the next vertex
 			}
 		} else assert(0); // should never come here
 	}
@@ -465,7 +495,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	return b;
 }
 
-int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v0, int32_t v1, uint32_t max_lag)
+int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v0, int32_t v1, uint32_t max_lag, int32_t traceback)
 {
 	int32_t s = 0, n_a = 1, end_v, end_off;
 	gwf_diag_t *a;
@@ -474,17 +504,19 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 	memset(&buf, 0, sizeof(buf));
 	buf.km = km;
 	buf.h = gwf_set64_init();
+	kv_resize(gwf_trace_t, km, buf.t, g->n_vtx + 16);
 	KCALLOC(km, a, 1);
 	a[0].vd = gwf_gen_vd(v0, 0), a[0].k = -1, a[0].xo = 0; // the initial state
+	a[0].t = gwf_trace_push(km, &buf.t, v0, -1);
 	while (n_a > 0) {
-		a = gwf_ed_extend(&buf, g, ql, q, v1, max_lag, &end_v, &end_off, &n_a, a);
+		a = gwf_ed_extend(&buf, g, ql, q, v1, max_lag, traceback, &end_v, &end_off, &n_a, a);
 		if (end_off >= 0 || n_a == 0) break;
 		++s;
 #ifdef GWF_DEBUG
-		printf("[%s] s=%d, n=%d\n", __func__, s, n_a);
+		printf("[%s] s=%d, n=%d, nt=%ld\n", __func__, s, n_a, buf.t.n);
 #endif
 	}
 	gwf_set64_destroy(buf.h);
-	kfree(km, buf.intv.a); kfree(km, buf.tmp.a); kfree(km, buf.swap.a);
+	kfree(km, buf.intv.a); kfree(km, buf.tmp.a); kfree(km, buf.swap.a); kfree(km, buf.t.a);
 	return end_v >= 0? s : -1; // end_v < 0 could happen if v0 can't reach v1
 }
