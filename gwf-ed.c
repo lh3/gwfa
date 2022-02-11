@@ -528,8 +528,8 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 
 	memset(&buf, 0, sizeof(buf));
 	buf.km = km;
-	buf.h = gwf_set64_init();
-	buf.ht = gwf_map64_init();
+	buf.h = gwf_set64_init2(km);
+	buf.ht = gwf_map64_init2(km);
 	kv_resize(gwf_trace_t, km, buf.t, g->n_vtx + 16);
 	KCALLOC(km, a, 1);
 	a[0].vd = gwf_gen_vd(v0, 0), a[0].k = -1, a[0].xo = 0; // the initial state
