@@ -229,7 +229,7 @@ static int32_t gwf_mixed_dedup(int32_t n_a, gwf_diag_t *a, int32_t n_b, gwf_intv
 }
 
 /*
- *
+ * Traceback stack
  */
 KHASHL_MAP_INIT(KH_LOCAL, gwf_map64_t, gwf_map64, uint64_t, int32_t, kh_hash_uint64, kh_eq_generic)
 
@@ -263,8 +263,8 @@ KHASHL_INIT(KH_LOCAL, gwf_set64_t, gwf_set64, uint64_t, kh_hash_dummy, kh_eq_gen
 
 typedef struct {
 	void *km;
-	gwf_set64_t *h;
-	gwf_map64_t *ht;
+	gwf_set64_t *ha; // hash table for adjacency
+	gwf_map64_t *ht; // hash table for traceback
 	gwf_intv_v intv;
 	gwf_intv_v tmp, swap;
 	gwf_diag_v ooo;
@@ -415,7 +415,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 
 	*end_v = *end_off = *end_tb = -1;
 	buf->tmp.n = 0;
-	gwf_set64_clear(buf->h); // hash table $h to avoid visiting a vertex twice
+	gwf_set64_clear(buf->ha); // hash table $h to avoid visiting a vertex twice
 	for (i = 0, x = 1; i < 32; ++i, x <<= 1)
 		if (x >= n) break;
 	if (i < 4) i = 4;
@@ -465,7 +465,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 			for (j = 0; j < nv; ++j) { // traverse $v's neighbors
 				uint32_t w = (uint32_t)g->arc[ov + j]; // $w is next to $v
 				int absent;
-				gwf_set64_put(buf->h, (uint64_t)w<<32 | (i + 1), &absent); // test if ($w,$i) has been visited
+				gwf_set64_put(buf->ha, (uint64_t)w<<32 | (i + 1), &absent); // test if ($w,$i) has been visited
 				if (q[i + 1] == g->seq[w][0]) { // can be extended to the next vertex without a mismatch
 					++n_ext;
 					if (absent) {
@@ -528,12 +528,12 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 
 	memset(&buf, 0, sizeof(buf));
 	buf.km = km;
-	buf.h = gwf_set64_init2(km);
+	buf.ha = gwf_set64_init2(km);
 	buf.ht = gwf_map64_init2(km);
 	kv_resize(gwf_trace_t, km, buf.t, g->n_vtx + 16);
 	KCALLOC(km, a, 1);
 	a[0].vd = gwf_gen_vd(v0, 0), a[0].k = -1, a[0].xo = 0; // the initial state
-	a[0].t = gwf_trace_push(km, &buf.t, -1, -1, buf.ht);
+	if (traceback) a[0].t = gwf_trace_push(km, &buf.t, -1, -1, buf.ht);
 	while (n_a > 0) {
 		a = gwf_ed_extend(&buf, g, ql, q, v1, max_lag, traceback, &path->end_v, &path->end_off, &end_tb, &n_a, a);
 		if (path->end_off >= 0 || n_a == 0) break;
@@ -542,8 +542,8 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 		printf("[%s] s=%d, n=%d, nt=%ld\n", __func__, s, n_a, buf.t.n);
 #endif
 	}
-	gwf_traceback(&buf, path->end_v, end_tb, path);
-	gwf_set64_destroy(buf.h);
+	if (traceback) gwf_traceback(&buf, path->end_v, end_tb, path);
+	gwf_set64_destroy(buf.ha);
 	gwf_map64_destroy(buf.ht);
 	kfree(km, buf.intv.a); kfree(km, buf.tmp.a); kfree(km, buf.swap.a); kfree(km, buf.t.a);
 	path->s = path->end_v >= 0? s : -1;
