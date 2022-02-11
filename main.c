@@ -58,7 +58,7 @@ void gwf_graph_print(FILE *fp, const gwf_graph_t *g)
 		fprintf(fp, "L\t%d\t+\t%d\t+\t*\n", (uint32_t)(g->arc[i]>>32), (uint32_t)g->arc[i]);
 }
 
-int main_ed_graph(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 	gzFile fp;
 	kseq_t *ks;
@@ -128,54 +128,4 @@ int main_ed_graph(int argc, char *argv[])
 	gwf_free(g);
 	km_destroy(km);
 	return 0;
-}
-
-int main_test(int argc, char *argv[])
-{
-	gwf_graph_t *g;
-	char *q;
-	int32_t ql, s, v, v0, v1;
-	void *km = 0;
-
-	g = (gwf_graph_t*)calloc(1, sizeof(*g));
-
-#define XTEST 2
-
-#if XTEST == 1
-	g->n_vtx = 1, g->n_arc = 0;
-	g->seq = calloc(g->n_vtx, sizeof(*g->seq));
-	g->seq[0] = strdup("GCTGCGATAGACCCTT");
-	q = strdup("AGCTGCAGACCCTT");
-	v0 = v1 = 0;
-#elif XTEST == 2
-	g->n_vtx = 3, g->n_arc = 4;
-	g->seq = calloc(g->n_vtx, sizeof(*g->seq));
-	g->arc = calloc(g->n_arc, sizeof(*g->arc));
-	g->seq[0] = strdup("CA");
-	g->seq[1] = strdup("T");
-	g->seq[2] = strdup("TA");
-	g->arc[0] = 0ULL<<32 | 1;
-	g->arc[1] = 1ULL<<32 | 2;
-	g->arc[2] = 1ULL<<32 | 0;
-	g->arc[3] = 2ULL<<32 | 1;
-	q = strdup("TATTA");
-	v0 = 1, v1 = -1;
-#endif
-
-	ql = strlen(q);
-	g->len = (uint32_t*)calloc(g->n_vtx, sizeof(*g->len));
-	for (v = 0; v < g->n_vtx; ++v)
-		g->len[v] = strlen(g->seq[v]);
-
-	gwf_ed_index(km, g);
-	s = gwf_ed(km, g, ql, q, v0, v1, 0, 0, 0);
-
-	printf("%d\n", s);
-
-	return 0;
-}
-
-int main(int argc, char *argv[])
-{
-	return main_ed_graph(argc, argv);
 }
