@@ -281,14 +281,9 @@ static int32_t gwf_dedup(gwf_edbuf_t *buf, int32_t n_a, gwf_diag_t *a)
 		kv_resize(gwf_intv_t, buf->km, buf->intv, buf->intv.n + buf->tmp.n);
 		buf->intv.n = gwf_intv_merge2(buf->intv.a, buf->swap.n, buf->swap.a, buf->tmp.n, buf->tmp.a);
 	}
-	int32_t n0 = n_a, n1;
 	n_a = gwf_diag_dedup(n_a, a, buf->km, &buf->ooo);
-	n1 = n_a;
 	if (buf->intv.n > 0)
 		n_a = gwf_mixed_dedup(n_a, a, buf->intv.n, buf->intv.a);
-#ifdef GWF_DEBUG
-	printf("[%s] intv.n=%ld; dedup: %d -> %d -> %d\n", __func__, buf->intv.n, n0, n1, n_a);
-#endif
 	return n_a;
 }
 
@@ -539,7 +534,7 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 		if (path->end_off >= 0 || n_a == 0) break;
 		++s;
 #ifdef GWF_DEBUG
-		printf("[%s] s=%d, n=%d, nt=%ld\n", __func__, s, n_a, buf.t.n);
+		printf("[%s] dist=%d, n=%d, n_intv=%ld, n_tb=%ld\n", __func__, s, n_a, buf.intv.n, buf.t.n);
 #endif
 	}
 	if (traceback) gwf_traceback(&buf, path->end_v, end_tb, path);
