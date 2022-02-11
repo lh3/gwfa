@@ -231,6 +231,8 @@ static int32_t gwf_mixed_dedup(int32_t n_a, gwf_diag_t *a, int32_t n_b, gwf_intv
 /*
  *
  */
+KHASHL_MAP_INIT(KH_LOCAL, gwf_map64_t, gwf_map64, uint64_t, int32_t, kh_hash_uint64, kh_eq_generic)
+
 typedef struct {
 	int32_t v;
 	int32_t pre;
@@ -238,14 +240,20 @@ typedef struct {
 
 typedef kvec_t(gwf_trace_t) gwf_trace_v;
 
-static int32_t gwf_trace_push(void *km, gwf_trace_v *a, int32_t v, int32_t pre)
+static int32_t gwf_trace_push(void *km, gwf_trace_v *a, int32_t v, int32_t pre, gwf_map64_t *h)
 {
-	if (a->n == 0 || a->a[a->n - 1].v != v || a->a[a->n - 1].pre != pre) {
+	uint64_t key = (uint64_t)v << 32 | (uint32_t)pre;
+	khint_t k;
+	int absent;
+	k = gwf_map64_put(h, key, &absent);
+	if (absent) {
 		gwf_trace_t *p;
 		kv_pushp(gwf_trace_t, km, *a, &p);
 		p->v = v, p->pre = pre;
+		kh_val(h, k) = a->n - 1;
+		return a->n - 1;
 	}
-	return a->n - 1;
+	return kh_val(h, k);
 }
 
 /*
@@ -256,6 +264,7 @@ KHASHL_INIT(KH_LOCAL, gwf_set64_t, gwf_set64, uint64_t, kh_hash_dummy, kh_eq_gen
 typedef struct {
 	void *km;
 	gwf_set64_t *h;
+	gwf_map64_t *ht;
 	gwf_intv_v intv;
 	gwf_intv_v tmp, swap;
 	gwf_diag_v ooo;
@@ -452,7 +461,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 			gwf_intv_t *p;
 			kv_pushp(gwf_intv_t, buf->km, buf->tmp, &p);
 			p->vd0 = gwf_gen_vd(v, d), p->vd1 = p->vd0 + 1;
-			if (traceback) tw = gwf_trace_push(buf->km, &buf->t, v, t.t);
+			if (traceback) tw = gwf_trace_push(buf->km, &buf->t, v, t.t, buf->ht);
 			for (j = 0; j < nv; ++j) { // traverse $v's neighbors
 				uint32_t w = (uint32_t)g->arc[ov + j]; // $w is next to $v
 				int absent;
@@ -480,7 +489,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 			gwf_diag_push(buf->km, &B, v, d-1, k+1, x0 + 1, ooo, t.t); // add an deletion; this *might* case a duplicate in corner cases
 		} else if (v != v1) { // i + 1 == ql && k + 1 == g->len[v]; not reaching the last vertex $v1
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j, tw = -1;
-			if (traceback) tw = gwf_trace_push(buf->km, &buf->t, v, t.t);
+			if (traceback) tw = gwf_trace_push(buf->km, &buf->t, v, t.t, buf->ht);
 			for (j = 0; j < nv; ++j) {
 				uint32_t w = (uint32_t)g->arc[ov + j];
 				gwf_diag_push(buf->km, &B, w, i, 0, x0 + 1, 1, tw); // deleting the first base on the next vertex
@@ -520,10 +529,11 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 	memset(&buf, 0, sizeof(buf));
 	buf.km = km;
 	buf.h = gwf_set64_init();
+	buf.ht = gwf_map64_init();
 	kv_resize(gwf_trace_t, km, buf.t, g->n_vtx + 16);
 	KCALLOC(km, a, 1);
 	a[0].vd = gwf_gen_vd(v0, 0), a[0].k = -1, a[0].xo = 0; // the initial state
-	a[0].t = gwf_trace_push(km, &buf.t, -1, -1);
+	a[0].t = gwf_trace_push(km, &buf.t, -1, -1, buf.ht);
 	while (n_a > 0) {
 		a = gwf_ed_extend(&buf, g, ql, q, v1, max_lag, traceback, &path->end_v, &path->end_off, &end_tb, &n_a, a);
 		if (path->end_off >= 0 || n_a == 0) break;
@@ -534,6 +544,7 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 	}
 	gwf_traceback(&buf, path->end_v, end_tb, path);
 	gwf_set64_destroy(buf.h);
+	gwf_map64_destroy(buf.ht);
 	kfree(km, buf.intv.a); kfree(km, buf.tmp.a); kfree(km, buf.swap.a); kfree(km, buf.t.a);
 	path->s = path->end_v >= 0? s : -1;
 	return path->s; // end_v < 0 could happen if v0 can't reach v1
