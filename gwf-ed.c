@@ -240,9 +240,11 @@ typedef kvec_t(gwf_trace_t) gwf_trace_v;
 
 static int32_t gwf_trace_push(void *km, gwf_trace_v *a, int32_t v, int32_t pre)
 {
-	gwf_trace_t *p;
-	kv_pushp(gwf_trace_t, km, *a, &p);
-	p->v = v, p->pre = pre;
+	if (a->n == 0 || a->a[a->n - 1].v != v || a->a[a->n - 1].pre != pre) {
+		gwf_trace_t *p;
+		kv_pushp(gwf_trace_t, km, *a, &p);
+		p->v = v, p->pre = pre;
+	}
 	return a->n - 1;
 }
 
@@ -395,14 +397,14 @@ static void gwf_ed_extend_batch(void *km, const gwf_graph_t *g, int32_t ql, cons
 
 // wfa_extend and wfa_next combined
 static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v1, uint32_t max_lag, int32_t traceback,
-								 int32_t *end_v, int32_t *end_off, int32_t *n_a_, gwf_diag_t *a)
+								 int32_t *end_v, int32_t *end_off, int32_t *end_tb, int32_t *n_a_, gwf_diag_t *a)
 {
 	int32_t i, x, n = *n_a_, do_dedup = 1;
 	kdq_t(gwf_diag_t) *A;
 	gwf_diag_v B = {0,0,0};
 	gwf_diag_t *b;
 
-	*end_v = -1, *end_off = -1;
+	*end_v = *end_off = *end_tb = -1;
 	buf->tmp.n = 0;
 	gwf_set64_clear(buf->h); // hash table $h to avoid visiting a vertex twice
 	for (i = 0, x = 1; i < 32; ++i, x <<= 1)
@@ -470,7 +472,7 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 			if (nv == 0 || n_ext != nv) // add an insertion to the target; this *might* cause a duplicate in corner cases
 				gwf_diag_push(buf->km, &B, v, d+1, k, x0 + 1, 1, t.t);
 		} else if (v1 < 0 || (v == v1 && k + 1 == vl)) { // i + 1 == ql
-			*end_v = v, *end_off = k, *n_a_ = 0;
+			*end_v = v, *end_off = k, *end_tb = t.t, *n_a_ = 0;
 			kdq_destroy(gwf_diag_t, A);
 			kfree(buf->km, B.a);
 			return 0;
@@ -495,9 +497,23 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 	return b;
 }
 
-int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v0, int32_t v1, uint32_t max_lag, int32_t traceback)
+static void gwf_traceback(gwf_edbuf_t *buf, int32_t end_tb, gwf_path_t *path)
 {
-	int32_t s = 0, n_a = 1, end_v, end_off;
+	int32_t i = end_tb, n = 0;
+	while (i >= 0)
+		++n, i = buf->t.a[i].pre;
+	KMALLOC(buf->km, path->v, n);
+	i = end_tb, n = 0;
+	while (i >= 0)
+		path->v[n++] = buf->t.a[i].v, i = buf->t.a[i].pre;
+	path->nv = n;
+	for (i = 0; i < path->nv>>1; ++i)
+		n = path->v[i], path->v[i] = path->v[path->nv - 1 - i], path->v[path->nv - 1 - i] = n;
+}
+
+int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_t v0, int32_t v1, uint32_t max_lag, int32_t traceback, gwf_path_t *path)
+{
+	int32_t s = 0, n_a = 1, end_tb;
 	gwf_diag_t *a;
 	gwf_edbuf_t buf;
 
@@ -509,14 +525,16 @@ int32_t gwf_ed(void *km, const gwf_graph_t *g, int32_t ql, const char *q, int32_
 	a[0].vd = gwf_gen_vd(v0, 0), a[0].k = -1, a[0].xo = 0; // the initial state
 	a[0].t = gwf_trace_push(km, &buf.t, v0, -1);
 	while (n_a > 0) {
-		a = gwf_ed_extend(&buf, g, ql, q, v1, max_lag, traceback, &end_v, &end_off, &n_a, a);
-		if (end_off >= 0 || n_a == 0) break;
+		a = gwf_ed_extend(&buf, g, ql, q, v1, max_lag, traceback, &path->end_v, &path->end_off, &end_tb, &n_a, a);
+		if (path->end_off >= 0 || n_a == 0) break;
 		++s;
 #ifdef GWF_DEBUG
 		printf("[%s] s=%d, n=%d, nt=%ld\n", __func__, s, n_a, buf.t.n);
 #endif
 	}
+	gwf_traceback(&buf, end_tb, path);
 	gwf_set64_destroy(buf.h);
 	kfree(km, buf.intv.a); kfree(km, buf.tmp.a); kfree(km, buf.swap.a); kfree(km, buf.t.a);
-	return end_v >= 0? s : -1; // end_v < 0 could happen if v0 can't reach v1
+	path->s = path->end_v >= 0? s : -1;
+	return path->s; // end_v < 0 could happen if v0 can't reach v1
 }

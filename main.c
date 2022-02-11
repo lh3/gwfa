@@ -23,10 +23,12 @@ gwf_graph_t *gwf_gfa2gwf(const gfa_t *gfa, uint32_t v0)
 	GFA_MALLOC(g->len, g->n_vtx);
 	GFA_MALLOC(g->seq, g->n_vtx);
 	GFA_MALLOC(g->arc, g->n_arc);
+	GFA_MALLOC(g->src, g->n_arc);
 	for (i = k = 0; i < sub->n_v; ++i) {
 		uint32_t v = sub->v[i].v, len = gfa->seg[v>>1].len, j;
 		const gfa_seg_t *s = &gfa->seg[v>>1];
 		g->len[i] = len;
+		g->src[i] = v;
 		GFA_MALLOC(g->seq[i], len + 1);
 		if (v&1) {
 			for (j = 0; j < len; ++j)
@@ -44,7 +46,7 @@ void gwf_free(gwf_graph_t *g)
 {
 	int32_t i;
 	for (i = 0; i < g->n_vtx; ++i) free(g->seq[i]);
-	free(g->len); free(g->seq); free(g->arc); free(g);
+	free(g->len); free(g->seq); free(g->arc); free(g->src); free(g);
 }
 
 void gwf_graph_print(FILE *fp, const gwf_graph_t *g)
@@ -63,6 +65,7 @@ int main_ed_graph(int argc, char *argv[])
 	ketopt_t o = KETOPT_INIT;
 	gfa_t *gfa;
 	gwf_graph_t *g;
+	gwf_path_t path;
 	int c, print_graph = 0, traceback = 0;
 	uint32_t v0 = 0<<1|0; // first segment, forward strand
 	uint32_t max_lag = 0;
@@ -95,7 +98,6 @@ int main_ed_graph(int argc, char *argv[])
 		else v0 = sid<<1 | 0; // TODO: also allow to change the orientation
 	}
 	g = gwf_gfa2gwf(gfa, v0);
-	gfa_destroy(gfa);
 	gwf_ed_index(km, g);
 	if (print_graph)
 		gwf_graph_print(stdout, g);
@@ -105,11 +107,22 @@ int main_ed_graph(int argc, char *argv[])
 	ks = kseq_init(fp);
 	while (kseq_read(ks) >= 0) {
 		int32_t s;
-		s = gwf_ed(km, g, ks->seq.l, ks->seq.s, 0, -1, max_lag, traceback);
-		printf("%s\t%d\n", ks->name.s, s);
+		s = gwf_ed(km, g, ks->seq.l, ks->seq.s, 0, -1, max_lag, traceback, &path);
+		if (traceback) {
+			int32_t i, last_len = -1, len = 0;
+			printf("%s\t%ld\t0\t%ld\t+\t", ks->name.s, ks->seq.l, ks->seq.l);
+			for (i = 0; i < path.nv; ++i) {
+				uint32_t v = g->src[path.v[i]];
+				printf("%c%s", "><"[v&1], gfa->seg[v>>1].name);
+				last_len = gfa->seg[v>>1].len;
+				len += last_len;
+			}
+			printf("\t%d\t0\t%d\t%d\n", len, len - (last_len - path.end_off) + 1, path.s);
+		} else printf("%s\t%d\n", ks->name.s, s);
 	}
 	kseq_destroy(ks);
 	gzclose(fp);
+	gfa_destroy(gfa);
 
 	gwf_cleanup(km, g);
 	gwf_free(g);
@@ -155,7 +168,7 @@ int main_test(int argc, char *argv[])
 		g->len[v] = strlen(g->seq[v]);
 
 	gwf_ed_index(km, g);
-	s = gwf_ed(km, g, ql, q, v0, v1, 0, 0);
+	s = gwf_ed(km, g, ql, q, v0, v1, 0, 0, 0);
 
 	printf("%d\n", s);
 
