@@ -66,24 +66,19 @@ int main(int argc, char *argv[])
 	gfa_t *gfa;
 	gwf_graph_t *g;
 	gwf_path_t path;
-	int c, print_graph = 0, traceback = 0;
+	int c, print_graph = 0;
 	uint32_t v0 = 0<<1|0; // first segment, forward strand
-	uint32_t max_lag = 0;
 	void *km = 0;
 	char *sname = 0;
 
-	while ((c = ketopt(&o, argc, argv, 1, "ptl:s:", 0)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "ps:", 0)) >= 0) {
 		if (c == 'p') print_graph = 1;
-		else if (c == 'l') max_lag = atoi(o.arg);
 		else if (c == 's') sname = o.arg;
-		else if (c == 't') traceback = 1;
 	}
 	if (argc - o.ind < 2) {
 		fprintf(stderr, "Usage: gwf-test [options] <target.gfa|fa> <query.fa>\n");
 		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -l INT    max lag behind the furthest wavefront; 0 to disable [0]\n");
 		fprintf(stderr, "  -s STR    starting segment name [first]\n");
-		fprintf(stderr, "  -t        report the alignment path\n");
 		return 1;
 	}
 
@@ -107,18 +102,8 @@ int main(int argc, char *argv[])
 	ks = kseq_init(fp);
 	while (kseq_read(ks) >= 0) {
 		int32_t s;
-		s = gwf_ed(km, g, ks->seq.l, ks->seq.s, 0, -1, max_lag, traceback, &path);
-		if (traceback) {
-			int32_t i, last_len = -1, len = 0;
-			printf("%s\t%ld\t0\t%ld\t+\t", ks->name.s, ks->seq.l, ks->seq.l);
-			for (i = 0; i < path.nv; ++i) {
-				uint32_t v = g->src[path.v[i]];
-				printf("%c%s", "><"[v&1], gfa->seg[v>>1].name);
-				last_len = gfa->seg[v>>1].len;
-				len += last_len;
-			}
-			printf("\t%d\t0\t%d\t%d\n", len, len - (last_len - path.end_off) + 1, path.s);
-		} else printf("%s\t%d\n", ks->name.s, s);
+		s = gwf_ed(km, g, ks->seq.l, ks->seq.s, 0, -1, &path);
+		printf("%s\t%d\n", ks->name.s, s);
 	}
 	kseq_destroy(ks);
 	gzclose(fp);
