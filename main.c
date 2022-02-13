@@ -53,9 +53,9 @@ void gwf_graph_print(FILE *fp, const gwf_graph_t *g)
 {
 	int32_t i;
 	for (i = 0; i < g->n_vtx; ++i)
-		fprintf(fp, "S\t%d\t*\tLN:i:%d\n", i, g->len[i]);
+		fprintf(fp, "S\t%d\t%s\tLN:i:%d\n", i, g->seq[i], g->len[i]);
 	for (i = 0; i < g->n_arc; ++i)
-		fprintf(fp, "L\t%d\t+\t%d\t+\t*\n", (uint32_t)(g->arc[i]>>32), (uint32_t)g->arc[i]);
+		fprintf(fp, "L\t%d\t+\t%d\t+\t0M\n", (uint32_t)(g->arc[i]>>32), (uint32_t)g->arc[i]);
 }
 
 int main(int argc, char *argv[])
@@ -78,12 +78,13 @@ int main(int argc, char *argv[])
 		else if (c == 's') sname = o.arg;
 		else if (c == 't') traceback = 1;
 	}
-	if (argc - o.ind < 2) {
+	if ((!print_graph && argc - o.ind < 2) || (print_graph && argc == o.ind)) {
 		fprintf(stderr, "Usage: gwf-test [options] <target.gfa|fa> <query.fa>\n");
 		fprintf(stderr, "Options:\n");
 		fprintf(stderr, "  -l INT    max lag behind the furthest wavefront; 0 to disable [0]\n");
 		fprintf(stderr, "  -s STR    starting segment name [first]\n");
 		fprintf(stderr, "  -t        report the alignment path\n");
+		fprintf(stderr, "  -p        output GFA in the forward strand\n");
 		return 1;
 	}
 
@@ -98,9 +99,11 @@ int main(int argc, char *argv[])
 		else v0 = sid<<1 | 0; // TODO: also allow to change the orientation
 	}
 	g = gwf_gfa2gwf(gfa, v0);
-	gwf_ed_index(km, g);
-	if (print_graph)
+	if (print_graph) {
 		gwf_graph_print(stdout, g);
+		return 0; // free memory
+	}
+	gwf_ed_index(km, g);
 
 	fp = gzopen(argv[o.ind+1], "r");
 	assert(fp);
