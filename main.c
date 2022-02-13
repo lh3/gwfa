@@ -24,7 +24,6 @@ gwf_graph_t *gwf_gfa2gwf(const gfa_t *gfa, uint32_t v0)
 	GFA_MALLOC(g->src, g->n_vtx);
 	GFA_MALLOC(g->seq, g->n_vtx);
 	GFA_MALLOC(g->arc, g->n_arc);
-	GFA_MALLOC(g->ol,  g->n_arc);
 	for (i = k = 0; i < sub->n_v; ++i) {
 		uint32_t v = sub->v[i].v, len = gfa->seg[v>>1].len, j;
 		const gfa_seg_t *s = &gfa->seg[v>>1];
@@ -38,8 +37,8 @@ gwf_graph_t *gwf_gfa2gwf(const gfa_t *gfa, uint32_t v0)
 		g->seq[i][len] = 0; // null terminated for convenience
 		for (j = 0; j < sub->v[i].n; ++j) {
 			uint64_t a = sub->a[sub->v[i].off + j];
-			g->arc[k] = (uint64_t)i<<32 | a>>32;
-			g->ol[k] = gfa->arc[(uint32_t)a].ow;
+			g->arc[k].a = (uint64_t)i<<32 | a>>32;
+			g->arc[k].o = gfa->arc[(uint32_t)a].ow;
 			++k;
 		}
 		assert(k <= g->n_arc);
@@ -51,7 +50,7 @@ void gwf_free(gwf_graph_t *g)
 {
 	int32_t i;
 	for (i = 0; i < g->n_vtx; ++i) free(g->seq[i]);
-	free(g->len); free(g->seq); free(g->arc); free(g->src); free(g->ol); free(g);
+	free(g->len); free(g->seq); free(g->arc); free(g->src); free(g);
 }
 
 void gwf_graph_print(FILE *fp, const gwf_graph_t *g)
@@ -60,7 +59,7 @@ void gwf_graph_print(FILE *fp, const gwf_graph_t *g)
 	for (i = 0; i < g->n_vtx; ++i)
 		fprintf(fp, "S\t%d\t%s\tLN:i:%d\n", i, g->seq[i], g->len[i]);
 	for (i = 0; i < g->n_arc; ++i)
-		fprintf(fp, "L\t%d\t+\t%d\t+\t%dM\n", (uint32_t)(g->arc[i]>>32), (uint32_t)g->arc[i], g->ol[i]);
+		fprintf(fp, "L\t%d\t+\t%d\t+\t%dM\n", (uint32_t)(g->arc[i].a>>32), (uint32_t)g->arc[i].a, g->arc[i].o);
 }
 
 int main(int argc, char *argv[])

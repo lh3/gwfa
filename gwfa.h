@@ -4,12 +4,16 @@
 #include <stdint.h>
 
 typedef struct {
+	uint64_t a;
+	int32_t o;
+} gwf_arc_t;
+
+typedef struct {
 	uint32_t n_vtx, n_arc;
 	uint32_t *len;
 	uint32_t *src;
 	char **seq;
-	uint64_t *arc;
-	int32_t *ol;
+	gwf_arc_t *arc;
 	uint64_t *aux;
 } gwf_graph_t;
 

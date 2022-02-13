@@ -9,17 +9,17 @@
  * Indexing the graph *
  **********************/
 
-#define generic_key(x) (x)
-KRADIX_SORT_INIT(gwf64, uint64_t, generic_key, 8)
+#define arc_key(x) ((x).a)
+KRADIX_SORT_INIT(gwf_arc, gwf_arc_t, arc_key, 8)
 
 // index the graph such that we can quickly access the neighbors of a vertex
-void gwf_ed_index_arc_core(uint64_t *idx, uint32_t n_vtx, uint32_t n_arc, uint64_t *arc)
+void gwf_ed_index_arc_core(uint64_t *idx, uint32_t n_vtx, uint32_t n_arc, gwf_arc_t *arc)
 {
 	uint32_t i, st;
-	radix_sort_gwf64(arc, arc + n_arc);
+	radix_sort_gwf_arc(arc, arc + n_arc);
 	for (st = 0, i = 1; i <= n_arc; ++i) {
-		if (i == n_arc || arc[i]>>32 != arc[st]>>32) {
-			uint32_t v = arc[st]>>32;
+		if (i == n_arc || arc[i].a>>32 != arc[st].a>>32) {
+			uint32_t v = arc[st].a>>32;
 			assert(v < n_vtx);
 			idx[v] = (uint64_t)st << 32 | (i - st);
 			st = i;
@@ -458,19 +458,20 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 			p->vd0 = gwf_gen_vd(v, d), p->vd1 = p->vd0 + 1;
 			if (traceback) tw = gwf_trace_push(buf->km, &buf->t, v, t.t, buf->ht);
 			for (j = 0; j < nv; ++j) { // traverse $v's neighbors
-				uint32_t w = (uint32_t)g->arc[ov + j]; // $w is next to $v
+				uint32_t w = (uint32_t)g->arc[ov + j].a; // $w is next to $v
+				int32_t ol = g->arc[ov + j].o;
 				int absent;
 				gwf_set64_put(buf->ha, (uint64_t)w<<32 | (i + 1), &absent); // test if ($w,$i) has been visited
-				if (q[i + 1] == g->seq[w][0]) { // can be extended to the next vertex without a mismatch
+				if (q[i + 1] == g->seq[w][ol]) { // can be extended to the next vertex without a mismatch
 					++n_ext;
 					if (absent) {
 						gwf_diag_t *p;
 						p = kdq_pushp(gwf_diag_t, A);
-						p->vd = gwf_gen_vd(w, i+1), p->k = 0, p->xo = (x0+2)<<1 | 1, p->t = tw;
+						p->vd = gwf_gen_vd(w, i+1-ol), p->k = ol, p->xo = (x0+2)<<1 | 1, p->t = tw;
 					}
 				} else if (absent) {
-					gwf_diag_push(buf->km, &B, w, i,   0, x0 + 1, 1, tw);
-					gwf_diag_push(buf->km, &B, w, i+1, 0, x0 + 2, 1, tw);
+					gwf_diag_push(buf->km, &B, w, i-ol,   ol, x0 + 1, 1, tw);
+					gwf_diag_push(buf->km, &B, w, i+1-ol, ol, x0 + 2, 1, tw);
 				}
 			}
 			if (nv == 0 || n_ext != nv) // add an insertion to the target; this *might* cause a duplicate in corner cases
@@ -486,8 +487,9 @@ static gwf_diag_t *gwf_ed_extend(gwf_edbuf_t *buf, const gwf_graph_t *g, int32_t
 			int32_t ov = g->aux[v]>>32, nv = (int32_t)g->aux[v], j, tw = -1;
 			if (traceback) tw = gwf_trace_push(buf->km, &buf->t, v, t.t, buf->ht);
 			for (j = 0; j < nv; ++j) {
-				uint32_t w = (uint32_t)g->arc[ov + j];
-				gwf_diag_push(buf->km, &B, w, i, 0, x0 + 1, 1, tw); // deleting the first base on the next vertex
+				uint32_t w = (uint32_t)g->arc[ov + j].a;
+				int32_t ol = g->arc[ov + j].o;
+				gwf_diag_push(buf->km, &B, w, i-ol, ol, x0 + 1, 1, tw); // deleting the first base on the next vertex
 			}
 		} else assert(0); // should never come here
 	}
