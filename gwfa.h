@@ -9,6 +9,7 @@ typedef struct {
 	uint32_t *src;
 	char **seq;
 	uint64_t *arc;
+	int32_t *ol;
 	uint64_t *aux;
 } gwf_graph_t;
 
