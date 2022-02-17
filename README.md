@@ -1,3 +1,9 @@
+**Note:** the development of GWFA has been moved to
+[gfatools](https://github.com/lh3/gfatools) such that the algorithm can
+directly operate on bidirected sequence graphs.
+
+<hr>
+
 ## Getting Started
 ```sh
 git clone https://github.com/lh3/gwfa
