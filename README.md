@@ -58,6 +58,12 @@ implmentation is correct in all corner cases. Please use with caution.
 [Shiqi Wu][shiqi] formulated the initial GWFA algorithm. [Haowen Zhang][haowen]
 inspected the code and helped the evaluation.
 
+## Cite GWFA
+
+You can find the [preprint][preprint] here:
+
+> Zhang H, Wu S, Aluru S and Li H (2022) Fast sequence to graph alignment using the graph wavefront algorithm. arXiv:2206.13574
+
 [mylv89]: https://github.com/lh3/lv89
 [lv89]: https://doi.org/10.1016/0196-6774(89)90010-2
 [wfa]: https://github.com/smarco/WFA
@@ -67,3 +73,4 @@ inspected the code and helped the evaluation.
 [graphaligner]: https://github.com/maickrau/GraphAligner
 [shiqi]: https://github.com/Shiqi-Wu
 [edlib]: https://github.com/Martinsos/edlib
+[preprint]: https://arxiv.org/abs/2206.13574
